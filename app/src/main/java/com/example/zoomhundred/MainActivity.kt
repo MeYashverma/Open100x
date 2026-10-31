@@ -348,6 +348,7 @@ class MainActivity : AppCompatActivity(),
     }
 
     override fun onPause() {
+        if (uiReady && sphereSession != null) cancelSphereSession()
         if (!uiReady) {
             super.onPause()
             return
@@ -431,6 +432,7 @@ class MainActivity : AppCompatActivity(),
 
         binding.proSettingsButton.setOnClickListener { openProPanel() }
         binding.switchLensButton.setOnClickListener { switchLens() }
+        binding.lensBadgeText.setOnClickListener { switchLens() }
         binding.resetZoomButton.setOnClickListener { animateZoom(1f) }
         binding.lockZoomButton.setOnClickListener { toggleZoomLock() }
         binding.flashlightButton.setOnClickListener { toggleTorch() }
@@ -1028,6 +1030,7 @@ class MainActivity : AppCompatActivity(),
         sphereSession = null
         session.cancel()
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        if (!::binding.isInitialized) return
         binding.sphereOverlay.visibility = View.GONE
         binding.captureButton.mode = CaptureButtonView.Mode.PHOTO
         binding.captureButton.progress = 0f
@@ -1258,7 +1261,7 @@ class MainActivity : AppCompatActivity(),
         applyZoomChipState(clamped)
         // The reticle/FoV read-out belongs to long zoom and Pro mode, not to the idle screen.
         binding.extremeOverlay.visibility =
-            if (mode == CaptureMode.PRO || clamped > 2.5f) View.VISIBLE else View.INVISIBLE
+            if (mode == CaptureMode.PRO) View.VISIBLE else View.INVISIBLE
         updateHud()
         updateStatusHints()
         if (settings.showLoupe) updateLoupeSource()
@@ -1439,7 +1442,7 @@ class MainActivity : AppCompatActivity(),
         binding.shakeMeterRow.visibility = View.GONE
         binding.sidePanel.visibility = if (mode == CaptureMode.PRO) View.VISIBLE else View.GONE
         binding.extremeOverlay.visibility =
-            if (mode == CaptureMode.PRO || zoom > 2.5f) View.VISIBLE else View.INVISIBLE
+            if (mode == CaptureMode.PRO) View.VISIBLE else View.INVISIBLE
         binding.captureStatusText.visibility = View.GONE
         binding.zoomRail.locked = settings.zoomLocked
         binding.nightOverlay.visibility = if (settings.nightUi || mode == CaptureMode.NIGHT) View.VISIBLE else View.GONE
