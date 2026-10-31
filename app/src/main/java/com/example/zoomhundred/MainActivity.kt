@@ -149,6 +149,7 @@ class MainActivity : AppCompatActivity(),
     private var settledStartedMs = 0L
 
     private var countdownRemaining = 0
+    private var countdownToken = 0
     private var pendingRawJpegSecondPass = false
 
     private var recordingActive = false
@@ -220,6 +221,15 @@ class MainActivity : AppCompatActivity(),
         settings = AppSettings.load(this)
         pro = ProSettings.load(this)
         mode = settings.defaultMode
+        monitorMode = when {
+            settings.peakingEnabled -> 2
+            settings.zebraskaEnabled -> 3
+            settings.histogramEnabled -> 1
+            else -> 0
+        }
+        if (settings.keepScreenOn) {
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         antiShake = AntiShakeController(this)
         recorderController = VideoRecorderController(this).apply { listener = this@MainActivity }
@@ -806,10 +816,15 @@ class MainActivity : AppCompatActivity(),
     // ── Timer / countdown ─────────────────────────────────────────────────────
 
     private fun startCountdown(seconds: Int, action: () -> Unit) {
+        cancelCountdown()
         countdownRemaining = seconds
+        val token = countdownToken
         binding.captureStatusText.visibility = View.VISIBLE
+        binding.captureStatusText.text = countdownRemaining.toString()
         val tick = object : Runnable {
             override fun run() {
+                // A cancelled or restarted countdown must never fire its capture.
+                if (token != countdownToken || isFinishing || isDestroyed) return
                 if (countdownRemaining <= 0) {
                     binding.captureStatusText.visibility = View.GONE
                     action()
@@ -820,10 +835,11 @@ class MainActivity : AppCompatActivity(),
                 mainHandler.postDelayed(this, 1000L)
             }
         }
-        mainHandler.post(tick)
+        mainHandler.postDelayed(tick, 1000L)
     }
 
     private fun cancelCountdown() {
+        countdownToken++
         countdownRemaining = -1
         binding.captureStatusText.visibility = View.GONE
     }
@@ -1151,6 +1167,10 @@ class MainActivity : AppCompatActivity(),
 
     private fun cycleMonitoring() {
         monitorMode = (monitorMode + 1) % 5
+        settings.peakingEnabled = monitorMode == 2
+        settings.zebraskaEnabled = monitorMode == 3
+        settings.histogramEnabled = monitorMode == 1
+        settings.save(this)
         updateMonitorVisibility()
         if (monitorMode == 2) binding.peakingView.clear()
         if (monitorMode == 3) binding.zebraView.clear()
