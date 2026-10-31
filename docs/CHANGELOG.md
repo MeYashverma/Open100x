@@ -30,6 +30,13 @@ Follow-up to the 2.0.0 rewrite after the app was reported as "not opening / keep
   read now falls back to its default instead of throwing `ClassCastException` when a key
   changed type between releases (a classic crash-on-open after updating).
 
+### Added — safe mode
+* `LauncherActivity` runs before any camera code. Without a report it starts the camera
+  immediately (no layout inflation); with a report it shows a code-built safe-mode screen
+  with the trace plus *Copy report / Reset settings / Start anyway / Discard report*. The
+  trace is therefore reachable even when `MainActivity`, its theme or its layouts are the
+  thing that broke. `MainActivity` no longer owns the report dialog.
+
 ### Added — crash reporting
 * `Open100xApp` + `diagnostics/CrashGuard`: uncaught exceptions and recoverable failures
   are written to `files/crash/last_crash.txt` (device, OS, stack trace only — no photos,

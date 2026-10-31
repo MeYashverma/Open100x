@@ -44,17 +44,23 @@
             android:screenOrientation="fullSensor"
             android:theme="@style/Theme.ZoomHundred" />
 
+        <!-- Launcher entry: starts MainActivity, or shows the crash report in safe mode. -->
         <activity
-            android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
+            android:name=".LauncherActivity"
             android:exported="true"
-            android:screenOrientation="fullSensor"
-            android:theme="@style/Theme.ZoomHundred.Camera">
+            android:theme="@style/Theme.ZoomHundred">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
+            android:exported="false"
+            android:screenOrientation="fullSensor"
+            android:theme="@style/Theme.ZoomHundred.Camera" />
     </application>
 
 </manifest>

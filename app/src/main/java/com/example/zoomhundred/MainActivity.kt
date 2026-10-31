@@ -281,8 +281,6 @@ class MainActivity : AppCompatActivity(),
             CrashGuard.record(this, "camera start", error)
             showCameraUnavailable(error.shortMessage())
         }
-        // A trace from the previous session is far more useful than a silent restart.
-        mainHandler.postDelayed({ showPreviousCrashIfAny() }, 900L)
     }
 
     override fun onResume() {
@@ -1882,34 +1880,6 @@ class MainActivity : AppCompatActivity(),
             ))
         }
         setContentView(root)
-    }
-
-    /** Surfaces a trace recorded by the previous session. */
-    private fun showPreviousCrashIfAny() {
-        if (isFinishing || isDestroyed) return
-        val previous = CrashGuard.lastCrash(this) ?: return
-        runCatching {
-            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-                .setTitle(getString(R.string.crash_report_title))
-                .setMessage(previous.takeLast(1200))
-                .setPositiveButton(getString(R.string.crash_report_copy)) { _, _ ->
-                    copyToClipboard(previous)
-                    toast("Report copied")
-                }
-                .setNeutralButton(getString(R.string.crash_report_reset)) { _, _ ->
-                    // Recovery path: a stale preference file is the most common cause of a
-                    // launch crash after an update, and the user cannot clear it themselves.
-                    runCatching {
-                        if (::settings.isInitialized) settings.reset(this)
-                        ProSettings.reset(this)
-                    }.onFailure { android.util.Log.w(TAG, "settings reset failed", it) }
-                    CrashGuard.clear(this)
-                    toast("Settings reset")
-                    recreate()
-                }
-                .setNegativeButton(getString(R.string.crash_report_dismiss), null)
-                .show()
-        }.onFailure { android.util.Log.w(TAG, "crash dialog unavailable", it) }
     }
 
     private fun copyToClipboard(text: String) {

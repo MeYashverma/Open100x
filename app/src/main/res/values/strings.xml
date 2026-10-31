@@ -264,11 +264,6 @@
     <string name="cap_no_ois">Optical stabilization not available.</string>
     <string name="cap_no_eis">Video stabilization not available.</string>
 
-    <string name="crash_report_title">Last session closed unexpectedly</string>
-    <string name="crash_report_copy">Copy report</string>
-    <string name="crash_report_clear">Clear</string>
-    <string name="crash_report_reset">Reset settings</string>
-    <string name="crash_report_dismiss">Dismiss</string>
 
     <string name="retry">Retry</string>
     <string name="camera_unavailable_hint">The camera may be held by another app, or the system reported no usable lens. Retry after closing other camera apps.</string>

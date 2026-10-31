@@ -91,10 +91,13 @@ with your own key or install the debug APK for testing.
    removes every doubt.
 2. **Check the version**: `About` in Settings must read `2.0.1 (4)`. If it reads `2.0.0`,
    the old APK is still installed.
-3. If it still misbehaves, it will no longer die silently: the app shows either a startup
-   error screen or a "Last session closed unexpectedly" dialog, both with a **Copy report**
-   button. Copy that text and it contains the full stack trace, device model and Android
-   version — everything needed to fix the cause. Reports live in
+3. **If it still misbehaves, the app no longer dies silently.** `LauncherActivity` starts
+   *before* any camera code: when the previous session left a crash report, it opens a
+   plain **safe mode** screen instead of the viewfinder, with the full stack trace and four
+   actions — *Copy report*, *Reset settings*, *Start anyway*, *Discard report*. It is built
+   in code from a plain activity, so it works even if the camera screen, its theme or its
+   layouts are what broke. Copy the report and it contains the stack trace, device model and
+   Android version: everything needed to fix the cause. Reports live in
    `files/crash/last_crash.txt` inside the app's private storage and are never uploaded.
 
 ## How it fits together
