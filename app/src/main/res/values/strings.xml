@@ -277,4 +277,7 @@
     <string name="flashlight">Flashlight</string>
     <string name="pro_controls">Pro controls</string>
     <string name="gesture_hint">Pinch to zoom · Drag up or down to zoom · Tap to focus · Long-press to freeze the scope</string>
+    <string name="sphere_zoom_hint">Switch to 1× for a sphere</string>
+    <string name="sphere_no_gyro">This device has no orientation sensor, so a sphere sweep cannot be guided</string>
+    <string name="sphere_too_short">Sweep further before stopping — at least three frames</string>
 </resources>

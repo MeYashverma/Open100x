@@ -31,6 +31,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- Photo-sphere aiming grid; only visible during a sweep. -->
+    <com.example.zoomhundred.overlay.SphereOverlayView
+        android:id="@+id/sphereOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- ── Live image analysis overlays (all off unless the user turns them on) ── -->
     <com.example.zoomhundred.overlay.ZebraView
         android:id="@+id/zebraView"
@@ -621,11 +632,30 @@
             android:layout_width="match_parent"
             android:layout_height="44dp" />
 
-        <TextView
+        <LinearLayout
             android:id="@+id/zoomLockButton"
-            android:layout_width="wrap_content"
-            android:layout_height="1dp"
-            android:visibility="gone" />
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackground"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="@string/lock_zoom"
+                android:src="@drawable/ic_lock"
+                app:tint="@color/text_primary" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:background="@android:color/transparent"
+                android:text="@string/lock_zoom"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
     </LinearLayout>
 
     <LinearLayout

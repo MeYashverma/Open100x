@@ -44,12 +44,97 @@ object BitmapOps {
         }
     }
 
+    /**
+     * Reads the orientation tag through a **file descriptor**.
+     *
+     * Content-provider input streams are frequently not markable, and ExifInterface needs
+     * to seek: reading through an InputStream silently returns ORIENTATION_NORMAL for a
+     * large share of MediaStore URIs, which is exactly how a portrait capture ends up
+     * saved 90° on its side. The descriptor path always works.
+     */
     fun readExifOrientation(resolver: ContentResolver, uri: Uri): Int = try {
+        resolver.openFileDescriptor(uri, "r")?.use { pfd ->
+            ExifInterface(pfd.fileDescriptor).getAttributeInt(
+                ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+            )
+        } ?: readExifOrientationFromStream(resolver, uri)
+    } catch (_: Exception) {
+        readExifOrientationFromStream(resolver, uri)
+    }
+
+    private fun readExifOrientationFromStream(resolver: ContentResolver, uri: Uri): Int = try {
         resolver.openInputStream(uri)?.use {
             ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
         } ?: ExifInterface.ORIENTATION_NORMAL
     } catch (_: Exception) {
         ExifInterface.ORIENTATION_NORMAL
+    }
+
+    fun readExifOrientation(file: java.io.File): Int = try {
+        ExifInterface(file.absolutePath).getAttributeInt(
+            ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+        )
+    } catch (_: Exception) {
+        ExifInterface.ORIENTATION_NORMAL
+    }
+
+    /**
+     * Decodes at working size **and bakes in the EXIF rotation**, returning pixels that
+     * are already upright. Every computational frame must go through this: the stackers
+     * save their own bitmap and cannot rely on an orientation tag surviving the merge.
+     */
+    fun loadOriented(
+        resolver: ContentResolver,
+        uri: Uri,
+        maxPixels: Int = MAX_WORKING_PIXELS
+    ): Bitmap? {
+        val decoded = decodeSampled(resolver, uri, maxPixels) ?: return null
+        return orient(decoded, readExifOrientation(resolver, uri))
+    }
+
+    fun loadOriented(file: java.io.File, maxPixels: Int = MAX_WORKING_PIXELS): Bitmap? {
+        val decoded = decodeSampledFile(file, maxPixels) ?: return null
+        return orient(decoded, readExifOrientation(file))
+    }
+
+    private fun orient(decoded: Bitmap, orientation: Int): Bitmap {
+        if (orientation == ExifInterface.ORIENTATION_NORMAL ||
+            orientation == ExifInterface.ORIENTATION_UNDEFINED
+        ) {
+            return decoded
+        }
+        return try {
+            val rotated = applyExifOrientation(decoded, orientation)
+            if (rotated !== decoded) decoded.recycle()
+            rotated
+        } catch (_: Exception) {
+            decoded
+        } catch (_: OutOfMemoryError) {
+            decoded
+        }
+    }
+
+    fun decodeSampledFile(file: java.io.File, maxPixels: Int = MAX_WORKING_PIXELS): Bitmap? {
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(file.absolutePath, bounds)
+            val w = bounds.outWidth
+            val h = bounds.outHeight
+            if (w <= 0 || h <= 0) return null
+            var sample = 1
+            while ((w / sample).toLong() * (h / sample) > maxPixels) sample *= 2
+            BitmapFactory.decodeFile(
+                file.absolutePath,
+                BitmapFactory.Options().apply {
+                    inSampleSize = sample
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }
+            )
+        } catch (_: Exception) {
+            null
+        } catch (_: OutOfMemoryError) {
+            null
+        }
     }
 
     /** Returns either [src] itself or a new rotated bitmap. */

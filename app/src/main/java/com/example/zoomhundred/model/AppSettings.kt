@@ -61,6 +61,7 @@ data class AppSettings(
     var astroFrames: Int = 6,
     var astroExposureSeconds: Int = 4,
     var hdrFrames: Int = 3,
+    var hdrPlus: Boolean = true,
     var nightTripodMode: Boolean = true,
     var zoomEnhance: Boolean = true,
     var zoomEnhanceStrength: Int = 55,
@@ -73,6 +74,7 @@ data class AppSettings(
     var portraitStrength: Int = 55,
     var fisheyeStrength: Int = 60,
     var keepOriginals: Boolean = true,
+    var autoPolish: Boolean = true,
 
     // ── Gallery / storage ─────────────────────────────────────────────────────
     var saveSubfolder: String = "Open100x",
@@ -133,6 +135,7 @@ data class AppSettings(
                 astroFrames = p.safeInt("astroFrames", 6).coerceIn(2, 16),
                 astroExposureSeconds = p.safeInt("astroExposure", 4).coerceIn(1, 30),
                 hdrFrames = p.safeInt("hdrFrames", 3).coerceIn(2, 5),
+                hdrPlus = p.safeBoolean("hdrPlus", true),
                 nightTripodMode = p.safeBoolean("nightTripod", true),
                 zoomEnhance = p.safeBoolean("zoomEnhance", true),
                 zoomEnhanceStrength = p.safeInt("zoomEnhanceStrength", 55).coerceIn(0, 100),
@@ -143,6 +146,7 @@ data class AppSettings(
                 portraitStrength = p.safeInt("portraitStrength", 55).coerceIn(0, 100),
                 fisheyeStrength = p.safeInt("fisheyeStrength", 60).coerceIn(0, 100),
                 keepOriginals = p.safeBoolean("keepOriginals", true),
+                autoPolish = p.safeBoolean("autoPolish", true),
                 saveSubfolder = p.safeString("saveSubfolder", "Open100x") ?: "Open100x",
                 stripGps = p.safeBoolean("stripGps", false),
                 showLoupe = p.safeBoolean("showLoupe", false),
@@ -190,6 +194,7 @@ data class AppSettings(
             putInt("burstCount", burstCount.coerceIn(1, 20))
             putInt("intervalSeconds", intervalSeconds.coerceIn(1, 60))
             putBoolean("hdr", hdrEnabled)
+            putBoolean("hdrPlus", hdrPlus)
             putBoolean("raw", rawEnabled)
             putBoolean("mirrorSelfie", mirrorSelfie)
             putBoolean("saveMirrored", saveMirrored)
@@ -223,6 +228,7 @@ data class AppSettings(
             putInt("portraitStrength", portraitStrength)
             putInt("fisheyeStrength", fisheyeStrength)
             putBoolean("keepOriginals", keepOriginals)
+            putBoolean("autoPolish", autoPolish)
             putString("saveSubfolder", saveSubfolder)
             putBoolean("stripGps", stripGps)
             putBoolean("showLoupe", showLoupe)
@@ -255,6 +261,7 @@ data class AppSettings(
         "nightFrames" to nightFrames.toString(),
         "hdrFrames" to hdrFrames.toString(),
         "keepOriginals" to keepOriginals.toString(),
+        "autoPolish" to autoPolish.toString(),
         "stripGps" to stripGps.toString()
     )
 }
@@ -267,7 +274,7 @@ enum class CaptureMode(val label: String, val shortLabel: String) {
     NIGHT("Night", "NIGHT"),
     PRO("Pro", "PRO"),
     ASTRO("Astro", "ASTRO"),
-    PANORAMA("Panorama", "PANO"),
+    PANORAMA("Sphere", "SPHERE"),
     LIGHT("Light trails", "LIGHT"),
     TIMELAPSE("Time-lapse", "LAPSE"),
     FISHEYE("Fisheye", "FISHEYE"),

@@ -224,20 +224,30 @@ class GalleryActivity : AppCompatActivity() {
         sheet.show()
     }
 
+    /**
+     * Viewer decode. Uses the same EXIF path as the capture pipeline so a portrait shot
+     * is never shown on its side — reading the tag from a provider stream is unreliable,
+     * which is why [com.example.zoomhundred.imaging.BitmapOps] goes through a descriptor.
+     */
     private fun decodeSampled(uri: android.net.Uri): Bitmap? = try {
-        contentResolver.openInputStream(uri)?.use { stream ->
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeStream(stream, null, bounds)
-            val longest = maxOf(bounds.outWidth, bounds.outHeight)
-            var sample = 1
-            while (longest / sample > 2048) sample *= 2
-            contentResolver.openInputStream(uri)?.use { second ->
-                BitmapFactory.decodeStream(second, null, BitmapFactory.Options().apply {
-                    inSampleSize = sample
-                    inPreferredConfig = Bitmap.Config.ARGB_8888
-                })
+        val decoded = run {
+            contentResolver.openInputStream(uri)?.use { stream ->
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeStream(stream, null, bounds)
+                val longest = maxOf(bounds.outWidth, bounds.outHeight)
+                var sample = 1
+                while (longest / sample > 2048) sample *= 2
+                contentResolver.openInputStream(uri)?.use { second ->
+                    BitmapFactory.decodeStream(second, null, BitmapFactory.Options().apply {
+                        inSampleSize = sample
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                    })
+                }
             }
-        }
+        } ?: return null
+        val orientation = com.example.zoomhundred.imaging.BitmapOps.readExifOrientation(contentResolver, uri)
+        if (orientation == androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL) decoded
+        else com.example.zoomhundred.imaging.BitmapOps.applyExifOrientation(decoded, orientation)
     } catch (_: Exception) {
         null
     }
@@ -248,7 +258,12 @@ class GalleryActivity : AppCompatActivity() {
         val longest = maxOf(bounds.outWidth, bounds.outHeight)
         var sample = 1
         while (longest / sample > 2048) sample *= 2
-        BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+        val decoded = BitmapFactory.decodeFile(
+            file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample }
+        ) ?: return null
+        val orientation = com.example.zoomhundred.imaging.BitmapOps.readExifOrientation(file)
+        if (orientation == androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL) decoded
+        else com.example.zoomhundred.imaging.BitmapOps.applyExifOrientation(decoded, orientation)
     } catch (_: Exception) {
         null
     }

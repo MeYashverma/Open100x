@@ -57,7 +57,6 @@
 
         <activity
             android:name=".MainActivity"
-            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|uiMode"
             android:exported="false"
             android:screenOrientation="fullSensor"
             android:theme="@style/Theme.ZoomHundred.Camera" />

@@ -14,6 +14,7 @@ import com.example.zoomhundred.computational.HdrFusion
 import com.example.zoomhundred.computational.LightTrailStacker
 import com.example.zoomhundred.computational.NightStacker
 import com.example.zoomhundred.computational.PanoramaStitcher
+import com.example.zoomhundred.computational.SphericalStitcher
 import com.example.zoomhundred.imaging.BitmapOps
 import com.example.zoomhundred.imaging.ExifUtils
 import com.example.zoomhundred.imaging.ImageStore
@@ -205,7 +206,7 @@ class CaptureCoordinator(
         worker.execute {
             val provider = FrameProvider { index ->
                 files.getOrNull(index)?.let { file ->
-                    BitmapOps.decodeSampled(context.contentResolver, Uri.fromFile(file))
+                    BitmapOps.loadOriented(context.contentResolver, Uri.fromFile(file))
                 }
             }
             val merged = NightStacker.stack(
@@ -237,7 +238,13 @@ class CaptureCoordinator(
 
     private fun hdrShot(ctx: ShotContext) {
         val app = settings()
-        val stops = when (app.hdrFrames) {
+        // HDR+ takes frames at a single exposure and merges them (align + motion-reject +
+        // tone map), which is what buys the cleaner shadows. The bracket path shifts EV
+        // instead and fuses for dynamic range.
+        val sameExposure = app.hdrPlus
+        val stops = if (sameExposure) {
+            List(app.hdrFrames.coerceIn(2, 5)) { 0f }
+        } else when (app.hdrFrames) {
             2 -> listOf(-2f, 2f)
             3 -> listOf(-2f, 0f, 2f)
             4 -> listOf(-3f, -1f, 1f, 3f)
@@ -282,12 +289,17 @@ class CaptureCoordinator(
 
     private fun mergeHdr(files: List<File>, ctx: ShotContext, restoreEv: Float) {
         engine.setExposureCompensation(restoreEv)
-        listener?.onBusy(true, 0.5f, "Fusing exposures")
+        val sameExposure = settings().hdrPlus
+        listener?.onBusy(true, 0.5f, if (sameExposure) "Merging frames" else "Fusing exposures")
         worker.execute {
             val provider = FrameProvider { index ->
-                files.getOrNull(index)?.let { BitmapOps.decodeSampled(context.contentResolver, Uri.fromFile(it)) }
+                files.getOrNull(index)?.let { BitmapOps.loadOriented(context.contentResolver, Uri.fromFile(it)) }
             }
-            val fused = HdrFusion.fuse(files.size, provider)
+            val fused = if (sameExposure) {
+                NightStacker.stack(files.size, provider)
+            } else {
+                HdrFusion.fuse(files.size, provider)
+            }
             var saved: Uri? = null
             if (fused != null) {
                 val processed = PostCapture.renderBitmap(fused, postParams(ctx, portrait = false))
@@ -420,7 +432,7 @@ class CaptureCoordinator(
         listener?.onBusy(true, 0.6f, "Selecting sharp regions")
         worker.execute {
             val provider = FrameProvider { index ->
-                files.getOrNull(index)?.let { BitmapOps.decodeSampled(context.contentResolver, Uri.fromFile(it)) }
+                files.getOrNull(index)?.let { BitmapOps.loadOriented(context.contentResolver, Uri.fromFile(it)) }
             }
             val stacked = com.example.zoomhundred.computational.FocusStacker.stack(files.size, provider)
             var saved: Uri? = null
@@ -435,6 +447,65 @@ class CaptureCoordinator(
                 isBusy = false
                 listener?.onBusy(false, 1f, "")
                 if (saved != null) listener?.onSaved(saved!!) else listener?.onError("Focus stack failed")
+            }
+        }
+    }
+
+    // ── Guided photo sphere ───────────────────────────────────────────────────
+
+    /**
+     * Stitches a guided sphere capture into an equirectangular image.
+     *
+     * Each frame keeps the attitude that was live when it was taken, so the projection is
+     * correct whatever path the user swept: a horizontal pass gives a panorama, adding
+     * tilt gives a 360, covering up/down/around gives a full sphere.
+     */
+    fun stitchSphere(shots: List<SphereCaptureController.Shot>, hFovDegrees: Float, ctx: ShotContext) {
+        if (isBusy) return
+        if (shots.size < 3) {
+            listener?.onError("Sweep a little further — three frames minimum")
+            return
+        }
+        isBusy = true
+        listener?.onBusy(true, 0.15f, "Stitching sphere")
+        worker.execute {
+            val frames = shots.map { SphericalStitcher.Frame(it.rotation) }
+            val provider = FrameProvider { index ->
+                shots.getOrNull(index)?.let {
+                    BitmapOps.loadOriented(context.contentResolver, Uri.fromFile(it.file), 3_000_000)
+                }
+            }
+            val stitched = SphericalStitcher.stitch(
+                frames = frames,
+                outWidth = SphericalStitcher.DEFAULT_OUT_WIDTH,
+                hFovDegrees = hFovDegrees,
+                provider = provider
+            )
+            var saved: Uri? = null
+            if (stitched != null) {
+                val app = settings()
+                val params = PostCapture.Params(
+                    zoomRatio = 1f,
+                    nativeZoom = 1f,
+                    aspect = AspectRatio.FULL,
+                    profile = app.colorProfile,
+                    lut = com.example.zoomhundred.imaging.LutStore.loadByName(context.filesDir, app.lutName),
+                    lutIntensity = app.lutIntensity,
+                    frame = app.frameStyle,
+                    stripGps = app.stripGps || pro().stripGpsExif,
+                    keepOriginal = false,
+                    modeLabel = "SPHERE"
+                )
+                val processed = PostCapture.renderBitmap(stitched, params)
+                saved = saveBitmap(processed, ctx, astro = false)
+                if (processed !== stitched) processed.recycle()
+                stitched.recycle()
+            }
+            shots.forEach { runCatching { it.file.delete() } }
+            main.post {
+                isBusy = false
+                listener?.onBusy(false, 1f, "")
+                if (saved != null) listener?.onSaved(saved!!) else listener?.onError("Sphere stitch failed")
             }
         }
     }
@@ -584,7 +655,7 @@ class CaptureCoordinator(
 
     private fun stitchPanorama(frames: List<File>, ctx: ShotContext): Uri? {
         val provider = FrameProvider { index ->
-            frames.getOrNull(index)?.let { BitmapOps.decodeSampled(context.contentResolver, Uri.fromFile(it), 6_000_000) }
+            frames.getOrNull(index)?.let { BitmapOps.loadOriented(context.contentResolver, Uri.fromFile(it), 6_000_000) }
         }
         val result = PanoramaStitcher.stitch(frames.size, provider) ?: return null
         val processed = PostCapture.renderBitmap(result.bitmap, postParams(ctx, portrait = false))
@@ -596,7 +667,7 @@ class CaptureCoordinator(
 
     private fun stackLight(frames: List<File>, ctx: ShotContext): Uri? {
         val provider = FrameProvider { index ->
-            frames.getOrNull(index)?.let { BitmapOps.decodeSampled(context.contentResolver, Uri.fromFile(it)) }
+            frames.getOrNull(index)?.let { BitmapOps.loadOriented(context.contentResolver, Uri.fromFile(it)) }
         }
         val stacked = LightTrailStacker.accumulate(frames.size, provider, ctx.accumulation) ?: return null
         val processed = PostCapture.renderBitmap(stacked, postParams(ctx, portrait = false))
@@ -630,6 +701,7 @@ class CaptureCoordinator(
             enhanceStrength = app.zoomEnhanceStrength,
             stripGps = app.stripGps || p.stripGpsExif,
             keepOriginal = app.keepOriginals,
+            polish = app.autoPolish && ctx.mode != CaptureMode.DOCUMENT,
             document = ctx.mode == CaptureMode.DOCUMENT,
             digitalCrop = (ctx.zoomRatio / ctx.nativeZoom.coerceAtLeast(1f)).coerceAtLeast(1f),
             cropOffsetX = ctx.cropOffsetX,

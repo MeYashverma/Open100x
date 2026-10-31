@@ -3,6 +3,44 @@
 All notable changes to Open 100x. The app keeps its package identity
 (`com.example.zoomhundred`) and its release/signing configuration across versions.
 
+## [2.2.0] — photo sphere, real processing, correct orientation
+
+### Added — guided photo sphere
+* **Sphere mode** (the PANORAMA chip) is now a G-cam style sweep: the camera takes frames
+  by itself as you move, an aiming grid shows which parts of the scene are still missing,
+  and the shutter stops the sweep.
+* `SphericalStitcher` projects every frame onto a virtual sphere using the attitude that was
+  live at capture, then rasterises a 2:1 equirectangular image. A horizontal sweep gives a
+  panorama, adding tilt gives a 360, covering up/down/around gives a full sphere — one code
+  path, no mode-specific stitchers. Edge feathering plus mild gain matching hides the seams;
+  gaps you never covered are grey rather than black.
+* Frames are decoded one at a time and the output is bounded by a pixel budget, so a sweep
+  does not exhaust the heap.
+
+### Added — processing
+* **Auto polish** (on by default): banded, resolution-preserving finishing on every photo —
+  S-curve with a lifted toe and rolled-off shoulder, vibrance that leaves skin alone, and a
+  luma-only unsharp mask so edges crisp up without colour fringing.
+* **HDR+ merge**: same-exposure multi-frame align + motion-rejected merge + tone map, now
+  selectable beside the exposure-bracket fusion. The sheet says plainly that the merge runs
+  at about 3 MP because of the phone memory budget.
+
+### Fixed
+* **Photos saved 90° rotated.** EXIF orientation was read from a provider InputStream, which
+  is frequently not markable, so ExifInterface silently reported ORIENTATION_NORMAL. Reads now
+  go through a file descriptor, and every computational frame (night, astro, HDR, panorama,
+  light trail, focus stack) is decoded **upright** before merging — those paths save their own
+  bitmap and cannot rely on an orientation tag surviving the merge.
+* The gallery viewer applies the same EXIF path, so portrait shots are no longer shown on
+  their side.
+* **100× zoom is back on the capsule.** The six-stop limit now always keeps the lens' maximum
+  stop instead of chopping it off.
+* **Landscape.** The activity re-inflates the landscape layout on rotation (it used to keep the
+  portrait layout, which is what mangled the screen), the landscape chrome is compressed so the
+  preview keeps the display, and orientation is pinned while recording or sweeping so neither
+  is interrupted.
+* The zoom-lock control is a real, visible row in the zoom drawer instead of a 1 dp stub.
+
 ## [2.1.0] — iOS / ColorOS style viewfinder
 
 The 2.0 UI was too busy: a lilac palette, pills inside pills, three zoom read-outs, a

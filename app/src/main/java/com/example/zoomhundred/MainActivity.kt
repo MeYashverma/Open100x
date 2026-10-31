@@ -50,6 +50,7 @@ import com.example.zoomhundred.camera.FeatureState
 import com.example.zoomhundred.camera.LensCapabilities
 import com.example.zoomhundred.camera.LumaFrame
 import com.example.zoomhundred.camera.ShotContext
+import com.example.zoomhundred.camera.SphereCaptureController
 import com.example.zoomhundred.camera.VideoConfig
 import com.example.zoomhundred.camera.ZoomEngine
 import com.example.zoomhundred.computational.AccumulationMode
@@ -143,6 +144,9 @@ class MainActivity : AppCompatActivity(),
 
     /** Zoom capsule chips, rebuilt whenever the lens (and therefore the stops) changes. */
     private var zoomChips: List<Pair<Float, TextView>> = emptyList()
+
+    /** Non-null while a guided photo-sphere sweep is running. */
+    private var sphereSession: SphereCaptureController? = null
 
     /** Set by the first analysis frame; the watchdog reports a silently frozen session. */
     @Volatile
@@ -359,6 +363,8 @@ class MainActivity : AppCompatActivity(),
     }
 
     override fun onDestroy() {
+        sphereSession?.cancel()
+        sphereSession = null
         if (!uiReady) {
             super.onDestroy()
             return
@@ -785,6 +791,13 @@ class MainActivity : AppCompatActivity(),
     // ── Recording callbacks ───────────────────────────────────────────────────
 
     override fun onRecordingState(state: VideoRecorderController.State) {
+        // A rotation would recreate the activity and kill the recorder; hold the current
+        // orientation for the duration of the take.
+        requestedOrientation = if (state.recording) {
+            ActivityInfo.SCREEN_ORIENTATION_LOCKED
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        }
         mainHandler.post {
             recordingActive = state.recording
             recordingPaused = state.paused
@@ -819,6 +832,10 @@ class MainActivity : AppCompatActivity(),
     // ── Shutter ───────────────────────────────────────────────────────────────
 
     private fun onShutterPressed() {
+        if (sphereSession != null) {
+            finishSphereSession()
+            return
+        }
         if (mode == CaptureMode.VIDEO) {
             toggleRecording()
             return
@@ -836,6 +853,7 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun onShutterLongPressed() {
+        if (sphereSession != null) return
         when {
             mode == CaptureMode.VIDEO -> toggleRecordingPause()
             mode == CaptureMode.PRO -> openProPanel()
@@ -849,7 +867,7 @@ class MainActivity : AppCompatActivity(),
 
     private fun takePhoto() {
         if (mode == CaptureMode.PANORAMA) {
-            startSequence(CaptureMode.PANORAMA, SequenceConfig(frames = 16, intervalMs = 0))
+            startSphereSession()
             return
         }
         if (mode == CaptureMode.LIGHT) {
@@ -941,6 +959,79 @@ class MainActivity : AppCompatActivity(),
                 toast(getString(R.string.light_trail_hint))
             else -> toast(getString(R.string.timelapse_hint))
         }
+    }
+
+    // ── Guided photo sphere ───────────────────────────────────────────────────
+
+    /**
+     * Starts a sweep. Frames are taken automatically as the phone moves; the user never
+     * presses the shutter. Tapping the shutter again stops and stitches.
+     */
+    private fun startSphereSession() {
+        if (sphereSession != null) return
+        if (coordinator.isBusy) return
+        if (zoom > 2.05f) {
+            animateZoom(1f)
+            toast(getString(R.string.sphere_zoom_hint))
+            return
+        }
+        val directory = java.io.File(cacheDir, "sphere").apply { if (!exists()) mkdirs() }
+        val session = SphereCaptureController(
+            context = this,
+            hFovDegrees = engine.horizontalFovDegrees(),
+            overlay = binding.sphereOverlay,
+            captureFrame = { onSaved, onError ->
+                val file = java.io.File(directory, "s_${System.currentTimeMillis()}.jpg")
+                engine.captureStillToFile(file, onSaved, onError)
+            },
+            onProgress = { _, percent, message ->
+                binding.captureStatusText.visibility = View.VISIBLE
+                binding.captureStatusText.text = message
+                binding.captureButton.progress = percent / 100f
+            },
+            onAutoFinish = { finishSphereSession() }
+        )
+        if (!session.start()) {
+            binding.captureStatusText.visibility = View.GONE
+            toast(getString(R.string.sphere_no_gyro))
+            return
+        }
+        sphereSession = session
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+        binding.sphereOverlay.visibility = View.VISIBLE
+        binding.captureButton.mode = CaptureButtonView.Mode.RECORDING
+        binding.captureButton.progress = 0f
+        haptic(HapticFeedbackConstants.VIRTUAL_KEY)
+    }
+
+    private fun finishSphereSession() {
+        val session = sphereSession ?: return
+        sphereSession = null
+        binding.sphereOverlay.visibility = View.GONE
+        binding.captureButton.mode = CaptureButtonView.Mode.PHOTO
+        binding.captureButton.progress = 0f
+        binding.captureStatusText.visibility = View.GONE
+        val shots = session.stop()
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        if (shots.size < 3) {
+            shots.forEach { runCatching { it.file.delete() } }
+            toast(getString(R.string.sphere_too_short))
+            return
+        }
+        binding.captureButton.mode = CaptureButtonView.Mode.BUSY
+        coordinator.stitchSphere(shots, engine.horizontalFovDegrees(), buildShotContext())
+        haptic(HapticFeedbackConstants.VIRTUAL_KEY)
+    }
+
+    private fun cancelSphereSession() {
+        val session = sphereSession ?: return
+        sphereSession = null
+        session.cancel()
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        binding.sphereOverlay.visibility = View.GONE
+        binding.captureButton.mode = CaptureButtonView.Mode.PHOTO
+        binding.captureButton.progress = 0f
+        binding.captureStatusText.visibility = View.GONE
     }
 
     private fun sequenceShutter() {
@@ -1096,7 +1187,10 @@ class MainActivity : AppCompatActivity(),
         // Nothing to show until the lens reports its stops.
         container.visibility = if (presets.isEmpty()) View.GONE else View.VISIBLE
         val chips = ArrayList<Pair<Float, TextView>>()
-        presets.take(6).forEach { preset ->
+        // Six stops fit on a 360 dp phone. The last one is always the lens' maximum, so
+        // the 100× end of the range can never be cropped away by that limit.
+        val shown = if (presets.size <= 6) presets else presets.take(5) + presets.last()
+        shown.forEach { preset ->
             val chip = TextView(this).apply {
                 text = preset.label
                 textSize = 13f
@@ -1276,6 +1370,7 @@ class MainActivity : AppCompatActivity(),
 
     private fun setMode(newMode: CaptureMode) {
         if (newMode == mode) return
+        if (sphereSession != null) cancelSphereSession()
         if (recordingActive) {
             toast("Stop recording first")
             return
@@ -1836,7 +1931,10 @@ class MainActivity : AppCompatActivity(),
 
                 override fun onStartSequence(target: CaptureMode) {
                     when (target) {
-                        CaptureMode.PANORAMA -> startSequence(CaptureMode.PANORAMA, SequenceConfig(16, 0L))
+                        CaptureMode.PANORAMA -> {
+                            setMode(CaptureMode.PANORAMA)
+                            startSphereSession()
+                        }
                         CaptureMode.LIGHT -> startSequence(
                             CaptureMode.LIGHT,
                             SequenceConfig(settings.nightFrames.coerceIn(4, 12), 420L)

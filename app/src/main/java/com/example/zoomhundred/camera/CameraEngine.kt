@@ -450,6 +450,29 @@ class CameraEngine(
     fun exposureRange(): Range<Int>? = camera?.cameraInfo?.exposureState?.exposureCompensationRange
 
     /**
+     * Horizontal field of view of the bound sensor, in degrees. The sphere stitcher needs
+     * it to know each frame's footprint on the sphere; 66° is a safe phone-wide default
+     * when the platform will not report a physical size.
+     */
+    fun horizontalFovDegrees(): Float {
+        val cam = camera ?: return 66f
+        return try {
+            val info = Camera2CameraInfo.from(cam.cameraInfo)
+            val focal = info.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                ?.minOrNull()
+            val size = info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
+            if (focal == null || focal <= 0f || size == null || size.width <= 0f) {
+                66f
+            } else {
+                Math.toDegrees(2.0 * kotlin.math.atan(size.width.toDouble() / (2.0 * focal)))
+                    .toFloat().coerceIn(30f, 120f)
+            }
+        } catch (_: Exception) {
+            66f
+        }
+    }
+
+    /**
      * Captures one still into MediaStore. [values] must contain DISPLAY_NAME/MIME_TYPE and
      * (on Q+) RELATIVE_PATH.
      */

@@ -186,6 +186,13 @@ class SettingsActivity : AppCompatActivity() {
         column.addView(SheetUi.switchRow(this, "HDR multi-frame", "Fuses 3–5 bracketed frames", settings.hdrEnabled) {
             settings.hdrEnabled = it; persist()
         })
+        column.addView(SheetUi.switchRow(this, "HDR+ merge", "Aligns and merges same-exposure frames", settings.hdrPlus) {
+            settings.hdrPlus = it; persist()
+        })
+        column.addView(SheetUi.note(this, "HDR+ merges at about 3 MP so the working set fits a phone: leave it off and shoot single frames when you want full sensor detail."))
+        column.addView(SheetUi.switchRow(this, "Auto polish", "Tone curve, vibrance and luma sharpening on every photo", settings.autoPolish) {
+            settings.autoPolish = it; persist()
+        })
         column.addView(SheetUi.sliderRow(
             context = this, label = "Night frames", valueText = "${settings.nightFrames}",
             from = 2f, to = 12f, step = 1f, initial = settings.nightFrames.toFloat(),

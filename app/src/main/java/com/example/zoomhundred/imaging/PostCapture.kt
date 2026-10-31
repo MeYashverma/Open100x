@@ -52,7 +52,9 @@ object PostCapture {
         val cropOffsetX: Float = 0f,
         val cropOffsetY: Float = 0f,
         val lensLabel: String = "",
-        val modeLabel: String = ""
+        val modeLabel: String = "",
+        val polish: Boolean = false,
+        val polishStrength: Int = 100
     )
 
     fun process(context: Context, uri: Uri, params: Params): Boolean {
@@ -121,6 +123,12 @@ object PostCapture {
         }
         if (params.profile != ColorProfile.NEUTRAL || params.lut != null) {
             current = replace(current, ColorPipeline.applyProfile(current, params.profile, params.lut, params.lutIntensity))
+        }
+        if (params.polish) {
+            current = replace(
+                current,
+                PhotoPolish.apply(current, params.polishStrength / 100f)
+            )
         }
         if (params.frame != FrameStyle.NONE) {
             current = replace(current, FrameRenderer.render(current, params.frame, buildCaption(params)))
