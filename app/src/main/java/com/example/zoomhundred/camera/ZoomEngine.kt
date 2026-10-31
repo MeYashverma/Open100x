@@ -109,6 +109,11 @@ class ZoomEngine(
     }
 
     companion object {
+
+        /** Absolute distance between two zoom stops on the log scale users perceive. */
+        fun logDistance(a: Float, b: Float): Float =
+            abs(ln(a.coerceAtLeast(0.01f)) - ln(b.coerceAtLeast(0.01f)))
+
         /**
          * How far the digital crop may extend past the sensor's native ratio. The app's
          * promise is a 100× hybrid range, so this stays wide enough to reach 100× on any

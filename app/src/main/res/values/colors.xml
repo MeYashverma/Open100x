@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Surfaces: deep black viewfinder, charcoal chrome. -->
-    <color name="ink">#FF07080A</color>
+    <color name="ink">#FF000000</color>
     <color name="surface_1">#FF101115</color>
     <color name="surface_2">#FF17191E</color>
     <color name="surface_3">#FF202329</color>
@@ -13,13 +13,20 @@
     <color name="text_primary">#FFF3F4F6</color>
     <color name="text_secondary">#FFA2A8B0</color>
     <color name="text_tertiary">#FF6C727A</color>
-    <color name="text_on_accent">#FF131016</color>
+    <color name="text_on_accent">#FF0A0A0C</color>
 
-    <!-- Accent: restrained lilac, inherited from the original identity. -->
-    <color name="accent">#FFCDBBFF</color>
-    <color name="accent_dim">#59CDBBFF</color>
-    <color name="accent_ghost">#1FCDBBFF</color>
-    <color name="accent_deep">#FF7C5CE6</color>
+    <!-- Accent: the camera-standard yellow used for the active state only. -->
+    <color name="accent">#FFFFD60A</color>
+    <color name="accent_dim">#66FFD60A</color>
+    <color name="accent_ghost">#1AFFD60A</color>
+    <color name="accent_deep">#FFE0B800</color>
+
+    <!-- Chrome -->
+    <color name="icon_tint">#F2FFFFFF</color>
+    <color name="mode_inactive">#B3FFFFFF</color>
+    <color name="capsule_fill">#4D000000</color>
+    <color name="capsule_stroke">#26FFFFFF</color>
+    <color name="pill_fill">#33FFFFFF</color>
 
     <!-- Semantic -->
     <color name="record_red">#FFFF4D4F</color>
@@ -34,8 +41,8 @@
     <color name="panel_scrim_color">#E6101115</color>
     <color name="violet_primary">@color/accent</color>
     <color name="violet_active">@color/accent_deep</color>
-    <color name="violet_container">#33CDBBFF</color>
-    <color name="slider_halo">#44CDBBFF</color>
+    <color name="violet_container">#33FFD60A</color>
+    <color name="slider_halo">#44FFD60A</color>
     <color name="slider_inactive">#3DFFFFFF</color>
     <color name="preset_button_bg">#14FFFFFF</color>
     <color name="preset_button_stroke">#33FFFFFF</color>

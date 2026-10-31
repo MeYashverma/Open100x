@@ -267,4 +267,14 @@
 
     <string name="retry">Retry</string>
     <string name="camera_unavailable_hint">The camera may be held by another app, or the system reported no usable lens. Retry after closing other camera apps.</string>
+
+    <string name="more">More</string>
+    <string name="hdr">HDR</string>
+    <string name="monitor">Monitor</string>
+    <string name="pause">Pause</string>
+    <string name="shutter">Shutter</string>
+    <string name="switch_camera">Switch camera</string>
+    <string name="flashlight">Flashlight</string>
+    <string name="pro_controls">Pro controls</string>
+    <string name="gesture_hint">Pinch to zoom · Drag up or down to zoom · Tap to focus · Long-press to freeze the scope</string>
 </resources>

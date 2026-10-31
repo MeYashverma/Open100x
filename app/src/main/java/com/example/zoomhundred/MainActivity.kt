@@ -66,6 +66,7 @@ import com.example.zoomhundred.model.PhotoFormat
 import com.example.zoomhundred.model.ProSettings
 import com.example.zoomhundred.model.StabilizationMode
 import com.example.zoomhundred.model.VideoResolution
+import com.example.zoomhundred.model.ZoomPreset
 import com.example.zoomhundred.overlay.CaptureButtonView
 import com.example.zoomhundred.overlay.HudState
 import com.example.zoomhundred.ui.ProPanelSheet
@@ -140,9 +141,21 @@ class MainActivity : AppCompatActivity(),
     /** One explanatory dialog per screen; later errors stay in the status line. */
     private var cameraErrorDialogShown = false
 
+    /** Zoom capsule chips, rebuilt whenever the lens (and therefore the stops) changes. */
+    private var zoomChips: List<Pair<Float, TextView>> = emptyList()
+
     /** Set by the first analysis frame; the watchdog reports a silently frozen session. */
     @Volatile
     private var firstFrameSeen = false
+
+    private val hintDismiss = object : Runnable {
+        override fun run() {
+            if (uiReady && !::binding.isInitialized) return
+            if (!coordinator.isBusy && !recordingActive) {
+                binding.captureStatusText.visibility = View.GONE
+            }
+        }
+    }
 
     private val firstFrameWatchdog = object : Runnable {
         override fun run() {
@@ -424,6 +437,11 @@ class MainActivity : AppCompatActivity(),
             if (fromUser) setZoom(zoomEngine.sliderToZoom(value), userInitiated = true)
         }
 
+        binding.zoomPresetRow.setOnClickListener { setDrawerOpen(!drawerOpen) }
+        binding.zoomPresetRow.setOnLongClickListener {
+            binding.switchLensButton.performClick()
+            true
+        }
         binding.zoomRail.onPresetSelected = { preset -> animateZoom(preset.ratio) }
         binding.zoomRail.onZoomScrubbed = { value -> setZoom(value, userInitiated = true) }
         binding.zoomRail.onZoomCommit = { value -> animateZoom(value) }
@@ -1061,12 +1079,66 @@ class MainActivity : AppCompatActivity(),
     private fun refreshZoomPresets() {
         val hasUltraWide = capabilities.hasUltraWide
         val available = settings.zoomPresets + ZoomEngine.DEFAULT_STOPS
+        val presets = zoomEngine.presets(available.distinct(), hasUltraWide)
         binding.zoomRail.minZoom = minZoom
         binding.zoomRail.maxZoom = maxZoom
-        binding.zoomRail.presets = zoomEngine.presets(available.distinct(), hasUltraWide)
+        binding.zoomRail.presets = presets
         binding.zoomSlider.valueFrom = 0f
         binding.zoomSlider.valueTo = 1f
         binding.zoomSlider.stepSize = 0f
+        buildZoomCapsule(presets)
+    }
+
+    /** iOS-style zoom capsule: circular stops, the current one filled white. */
+    private fun buildZoomCapsule(presets: List<ZoomPreset>) {
+        val container = binding.zoomPresetRow
+        container.removeAllViews()
+        val chips = ArrayList<Pair<Float, TextView>>()
+        presets.take(6).forEach { preset ->
+            val chip = TextView(this).apply {
+                text = preset.label
+                textSize = 13f
+                includeFontPadding = false
+                letterSpacing = 0.01f
+                gravity = android.view.Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                minWidth = dp(38)
+                setPadding(dp(9), 0, dp(9), 0)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, dp(32)
+                ).apply { marginStart = dp(2); marginEnd = dp(2) }
+                setOnClickListener { animateZoom(preset.ratio) }
+            }
+            container.addView(chip)
+            chips.add(preset.ratio to chip)
+        }
+        zoomChips = chips
+        applyZoomChipState(zoom)
+    }
+
+    private fun applyZoomChipState(value: Float) {
+        if (zoomChips.isEmpty()) return
+        val nearest = zoomChips.minByOrNull {
+            abs(ZoomEngine.logDistance(it.first, value))
+        }
+        val snapped = nearest != null && ZoomEngine.logDistance(nearest.first, value) < 0.18f
+        zoomChips.forEach { (ratio, chip) ->
+            val active = snapped && nearest != null && ratio == nearest.first
+            if (active) {
+                chip.background = ContextCompat.getDrawable(this, R.drawable.bg_zoom_chip_active)
+                chip.setTextColor(ContextCompat.getColor(this, R.color.text_on_accent))
+                chip.typeface = android.graphics.Typeface.create(
+                    "sans-serif-medium", android.graphics.Typeface.NORMAL
+                )
+            } else {
+                chip.background = null
+                chip.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
+                chip.typeface = android.graphics.Typeface.create(
+                    "sans-serif", android.graphics.Typeface.NORMAL
+                )
+            }
+        }
     }
 
     private fun setZoom(value: Float, userInitiated: Boolean) {
@@ -1087,6 +1159,10 @@ class MainActivity : AppCompatActivity(),
         binding.zoomValueText.text = ZoomEngine.formatReadout(clamped)
         binding.loupeView.zoomRatio = clamped
         if (drawerOpen) binding.zoomSlider.value = zoomEngine.zoomToSlider(clamped)
+        applyZoomChipState(clamped)
+        // The reticle/FoV read-out belongs to long zoom and Pro mode, not to the idle screen.
+        binding.extremeOverlay.visibility =
+            if (mode == CaptureMode.PRO || clamped > 2.5f) View.VISIBLE else View.INVISIBLE
         updateHud()
         updateStatusHints()
         if (settings.showLoupe) updateLoupeSource()
@@ -1159,8 +1235,8 @@ class MainActivity : AppCompatActivity(),
         bindCamera()
     }
 
-    private fun lensLabel(lens: LensCapabilities): String =
-        "${lens.label} · ${String.format(java.util.Locale.US, "%.1f×", zoomEngine.map(zoom).native)} native"
+    /** The top bar says which lens is live; the zoom itself lives in the capsule. */
+    private fun lensLabel(lens: LensCapabilities): String = lens.label
 
     // ── Modes & UI state ──────────────────────────────────────────────────────
 
@@ -1170,23 +1246,20 @@ class MainActivity : AppCompatActivity(),
         CaptureMode.PRIMARY.forEach { candidate ->
             val chip = TextView(this).apply {
                 text = candidate.shortLabel
-                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
-                textSize = 12f
-                letterSpacing = 0.08f
+                textSize = 13f
+                letterSpacing = 0.04f
+                includeFontPadding = false
                 gravity = android.view.Gravity.CENTER
-                setPadding(dp(11), dp(6), dp(11), dp(6))
-                background = ContextCompat.getDrawable(this@MainActivity, R.drawable.bg_chip_selector)
                 isClickable = true
                 isFocusable = true
-                contentDescription = candidate.label
+                setPadding(dp(12), 0, dp(12), 0)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+                )
                 setOnClickListener { onModeChipClicked(candidate) }
             }
-            val lp = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            lp.marginEnd = dp(6)
-            container.addView(chip, lp)
+            container.addView(chip)
         }
         highlightActiveMode()
     }
@@ -1229,10 +1302,22 @@ class MainActivity : AppCompatActivity(),
             val chip = container.getChildAt(index) as? TextView ?: continue
             val candidate = CaptureMode.PRIMARY.getOrNull(index) ?: continue
             val active = candidate == mode
-            chip.isSelected = active
             chip.setTextColor(
-                ContextCompat.getColor(this, if (active) R.color.text_on_accent else R.color.text_secondary)
+                ContextCompat.getColor(this, if (active) R.color.accent else R.color.mode_inactive)
             )
+            chip.typeface = android.graphics.Typeface.create(
+                if (active) "sans-serif-medium" else "sans-serif",
+                android.graphics.Typeface.NORMAL
+            )
+            if (active) centreModeChip(chip)
+        }
+    }
+
+    /** Keeps the selected mode under the thumb, the way stock cameras do. */
+    private fun centreModeChip(chip: android.view.View) {
+        binding.modeStripScroll.post {
+            val target = chip.left + chip.width / 2 - binding.modeStripScroll.width / 2
+            binding.modeStripScroll.smoothScrollTo(target.coerceAtLeast(0), 0)
         }
     }
 
@@ -1252,7 +1337,12 @@ class MainActivity : AppCompatActivity(),
         binding.hudView.visibleIf(settings.showHud)
         binding.loupeView.visibleIf(settings.showLoupe)
         binding.thumbnailView.visibleIf(settings.showThumbnail)
-        binding.shakeMeterRow.visibleIf(settings.antiShake)
+        // Stock-camera chrome: the shake meter is replaced by the edge glow, and the
+        // advanced rail only exists in Pro mode.
+        binding.shakeMeterRow.visibility = View.GONE
+        binding.sidePanel.visibility = if (mode == CaptureMode.PRO) View.VISIBLE else View.GONE
+        binding.extremeOverlay.visibility =
+            if (mode == CaptureMode.PRO || zoom > 2.5f) View.VISIBLE else View.INVISIBLE
         binding.captureStatusText.visibility = View.GONE
         binding.zoomRail.locked = settings.zoomLocked
         binding.nightOverlay.visibility = if (settings.nightUi || mode == CaptureMode.NIGHT) View.VISIBLE else View.GONE
@@ -1476,6 +1566,8 @@ class MainActivity : AppCompatActivity(),
         if (hint != null) {
             binding.captureStatusText.visibility = View.VISIBLE
             binding.captureStatusText.text = hint
+            mainHandler.removeCallbacks(hintDismiss)
+            mainHandler.postDelayed(hintDismiss, 3200L)
         } else if (!coordinator.isBusy) {
             binding.captureStatusText.visibility = View.GONE
         }

@@ -79,8 +79,8 @@ data class AppSettings(
     var stripGps: Boolean = false,
 
     // ── Interface ─────────────────────────────────────────────────────────────
-    var showLoupe: Boolean = true,
-    var loupeSizeDp: Int = 108,
+    var showLoupe: Boolean = false,
+    var loupeSizeDp: Int = 104,
     var loupeX: Float = -1f,
     var loupeY: Float = -1f,
     var showHud: Boolean = false,
@@ -145,7 +145,7 @@ data class AppSettings(
                 keepOriginals = p.safeBoolean("keepOriginals", true),
                 saveSubfolder = p.safeString("saveSubfolder", "Open100x") ?: "Open100x",
                 stripGps = p.safeBoolean("stripGps", false),
-                showLoupe = p.safeBoolean("showLoupe", true),
+                showLoupe = p.safeBoolean("showLoupe", false),
                 loupeSizeDp = p.safeInt("loupeSize", 108).coerceIn(72, 180),
                 loupeX = p.safeFloat("loupeX", -1f),
                 loupeY = p.safeFloat("loupeY", -1f),
