@@ -74,6 +74,16 @@ material lives in this repository.
 CI — `.github/workflows/android-ci.yml` — runs the unit tests, builds both APKs, compiles
 the instrumentation tests and uploads `open100x-apks` as a workflow artifact on every push.
 
+## Get the APKs
+
+Every push builds both APKs and uploads them as the **`open100x-apks`** artifact of the
+workflow run (`Actions → Android CI → <run> → Artifacts`). Pushing a tag such as `v2.0.0`
+additionally publishes a GitHub Release containing `app-debug.apk` and
+`app-release.apk` (`.github/workflows/release.yml`).
+
+The CI release APK is **unsigned** because no keystore lives in this repository; sign it
+with your own key or install the debug APK for testing.
+
 ## How it fits together
 
 ```
