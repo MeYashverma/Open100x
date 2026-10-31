@@ -125,11 +125,37 @@ data class DeviceCapabilities(
  * renders asks this object — never a hard-coded list — so nothing is advertised that the
  * device cannot actually do.
  */
+/**
+ * CameraX exposes RAW output through `ImageCapture.Builder.setOutputFormat(int)`. The
+ * constant is not present in every artifact this project can be built against, so the
+ * call is resolved reflectively and the capability layer asks the same question. If the
+ * API is missing, RAW is genuinely unavailable and the UI says so.
+ */
+object CameraXRawSupport {
+
+    val available: Boolean by lazy {
+        runCatching {
+            androidx.camera.core.ImageCapture.Builder::class.java
+                .getMethod("setOutputFormat", Int::class.javaPrimitiveType)
+            Class.forName("androidx.camera.core.ImageCapture").getField("OUTPUT_FORMAT_RAW")
+        }.isSuccess
+    }
+
+    fun enableRawOutput(builder: androidx.camera.core.ImageCapture.Builder): Boolean = runCatching {
+        if (!available) return false
+        val method = builder.javaClass.getMethod("setOutputFormat", Int::class.javaPrimitiveType)
+        val constant = Class.forName("androidx.camera.core.ImageCapture")
+            .getField("OUTPUT_FORMAT_RAW").getInt(null)
+        method.invoke(builder, constant)
+        true
+    }.getOrDefault(false)
+}
+
 object FeatureGate {
 
     fun raw(lens: LensCapabilities?): FeatureState = when {
         lens == null -> FeatureState.UNAVAILABLE
-        lens.supportsRaw -> FeatureState.FULL
+        lens.supportsRaw && CameraXRawSupport.available -> FeatureState.FULL
         else -> FeatureState.UNAVAILABLE
     }
 

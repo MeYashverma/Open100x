@@ -2,7 +2,6 @@ package com.example.zoomhundred
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.Handler
@@ -21,6 +20,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import com.example.zoomhundred.imaging.GalleryItem
 import com.example.zoomhundred.imaging.ImageStore
 import com.example.zoomhundred.model.AppSettings
 import com.example.zoomhundred.ui.SheetUi
@@ -47,7 +47,7 @@ class GalleryActivity : AppCompatActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val thumbExecutor = Executors.newFixedThreadPool(2)
-    private val items = ArrayList<ImageStore.GalleryItem>()
+    private val items = ArrayList<GalleryItem>()
     private val adapter = ThumbnailAdapter()
     private val thumbCache = HashMap<String, Bitmap>()
 
@@ -146,7 +146,7 @@ class GalleryActivity : AppCompatActivity() {
 
     // ── Detail sheet ──────────────────────────────────────────────────────────
 
-    private fun showDetail(item: ImageStore.GalleryItem) {
+    private fun showDetail(item: GalleryItem) {
         val sheet = BottomSheetDialog(this)
         val column = SheetUi.column(this)
         val preview = ImageView(this).apply {

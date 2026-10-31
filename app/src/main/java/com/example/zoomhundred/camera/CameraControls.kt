@@ -67,7 +67,10 @@ object CameraControls {
                 }
             )
         if (raw) {
-            runCatching { builder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_RAW) }
+            // RAW output is only available when this CameraX artifact exposes the
+            // setOutputFormat API; the capability detector gates the feature on the same
+            // check, so the UI never offers RAW the library cannot deliver.
+            CameraXRawSupport.enableRawOutput(builder)
         }
         val ext = Camera2Interop.Extender(builder)
         applyExposureToInterop(ext, pro, lens)

@@ -158,7 +158,9 @@ class LoupeView @JvmOverloads constructor(
         }
         canvas.restore()
 
-        canvas.drawRoundRect(rect.inset(0.6f, 0.6f), radius, radius, borderPaint)
+        val borderRect = RectF(rect)
+        borderRect.inset(0.6f, 0.6f)
+        canvas.drawRoundRect(borderRect, radius, radius, borderPaint)
 
         // Label strip
         val label = "×%.1f  ·  %s".format(magnification, formatZoom(zoomRatio))

@@ -111,7 +111,7 @@ class VideoRecorderController(private val context: Context) {
                         val uri = event.outputResults.outputUri
                         val error = event.error
                         recording = null
-                        if (error != VideoRecordEvent.FINALIZE_ERROR_NONE && uri == Uri.EMPTY) {
+                        if (error != VideoRecordEvent.Finalize.ERROR_NONE && uri == Uri.EMPTY) {
                             listener?.onRecordingError("Recording failed (code $error)")
                         } else if (uri != Uri.EMPTY) {
                             listener?.onRecordingFinalized(uri)

@@ -114,7 +114,7 @@ object FrameAligner {
     }
 }
 
-private class WeightedAccumulator(width: Int, height: Int) {
+private class WeightedAccumulator(private val width: Int, private val height: Int) {
     val sumR = FloatArray(width * height)
     val sumG = FloatArray(width * height)
     val sumB = FloatArray(width * height)
@@ -163,9 +163,10 @@ private fun forEachAlignedFrame(
             height = limited.height
             reference = FrameAligner.grid(limited)
         }
-        val grid = if (index == 0) reference else FrameAligner.grid(limited)
-        val shift = if (index == 0 || reference == null) 0 to 0
-        else FrameAligner.estimateShift(reference, grid, options.alignmentRadiusPercent)
+        val grid = FrameAligner.grid(limited)
+        val referenceGrid = reference
+        val shift = if (index == 0 || referenceGrid == null) 0 to 0
+        else FrameAligner.estimateShift(referenceGrid, grid, options.alignmentRadiusPercent)
         val dx = shift.first
         val dy = shift.second
         val pixels = IntArray(limited.width * limited.height)
@@ -383,9 +384,9 @@ object LightTrailStacker {
                 AccumulationMode.AVERAGE -> {
                     for (i in 0 until accumulator.count) {
                         val p = pixels[i]
-                        accumulator.sumR[i] += (p shr 16) and 0xFF
-                        accumulator.sumG[i] += (p shr 8) and 0xFF
-                        accumulator.sumB[i] += p and 0xFF
+                        accumulator.sumR[i] = accumulator.sumR[i] + ((p shr 16) and 0xFF).toFloat()
+                        accumulator.sumG[i] = accumulator.sumG[i] + ((p shr 8) and 0xFF).toFloat()
+                        accumulator.sumB[i] = accumulator.sumB[i] + (p and 0xFF).toFloat()
                         accumulator.weight[i] = (index + 1).toFloat()
                     }
                 }

@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import android.text.InputType
 import android.view.View
 import android.widget.EditText
@@ -521,7 +520,7 @@ class SettingsActivity : AppCompatActivity() {
             .setTitle("Reset all settings?")
             .setMessage("Restores every default. Media already captured is untouched.")
             .setPositiveButton("Reset") { _, _ ->
-                AppSettings.reset(this)
+                settings.reset(this)
                 ProSettings.reset(this)
                 settings = AppSettings.load(this)
                 build()
@@ -547,7 +546,7 @@ class SettingsActivity : AppCompatActivity() {
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val root = org.json.JSONObject()
         root.put("app", "Open100x")
-        root.put("exportedAtUtc", SystemClock.uptimeMillis())
+        root.put("exportedAtUtc", System.currentTimeMillis())
         root.put("zoomPresets", org.json.JSONArray(settings.zoomPresets))
         val map = org.json.JSONObject()
         settings.toDiagnosticMap().forEach { (key, value) -> map.put(key, value) }

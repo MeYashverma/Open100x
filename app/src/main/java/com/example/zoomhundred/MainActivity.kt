@@ -1,7 +1,7 @@
 package com.example.zoomhundred
 
 import android.Manifest
-import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -932,7 +932,7 @@ class MainActivity : AppCompatActivity(),
         }
         val start = zoom
         val end = zoomEngine.clamp(target)
-        val animator = ObjectAnimator.ofFloat(start, end).apply {
+        val animator = ValueAnimator.ofFloat(start, end).apply {
             duration = 220L
             addUpdateListener { setZoom(it.animatedValue as Float, userInitiated = false) }
             start()
@@ -941,7 +941,7 @@ class MainActivity : AppCompatActivity(),
         zoomAnimator = animator
     }
 
-    private var zoomAnimator: ObjectAnimator? = null
+    private var zoomAnimator: ValueAnimator? = null
 
     private fun nudgeZoom(direction: Int) {
         val next = if (direction > 0) zoom * 1.35f else zoom / 1.35f

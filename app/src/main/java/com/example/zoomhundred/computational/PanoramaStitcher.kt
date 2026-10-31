@@ -102,7 +102,7 @@ object PanoramaStitcher {
                     val feather = max(1, overlapLeft)
                     val shader = LinearGradient(
                         0f, 0f, feather.toFloat(), 0f,
-                        intArrayOf(0x00FFFFFF, 0xFFFFFFFF),
+                        intArrayOf(0x00FFFFFF, 0xFFFFFFFF.toInt()),
                         floatArrayOf(0f, 1f),
                         Shader.TileMode.CLAMP
                     )

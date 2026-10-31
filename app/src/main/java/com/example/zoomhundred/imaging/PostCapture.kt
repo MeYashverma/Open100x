@@ -173,10 +173,18 @@ object PostCapture {
         val white = percentile(0.98f).toFloat().coerceAtLeast(black + 8f)
         val scale = 255f / (white - black)
         val translate = -black * scale
-        val matrix = ColorMatrix().apply {
-            setScale(scale, scale, scale, 1f)
-            postTranslate(translate, translate, translate)
-        }
+        // ColorMatrix has no translate helper: scale first, then concat an offset matrix.
+        val matrix = ColorMatrix().apply { setScale(scale, scale, scale, 1f) }
+        matrix.postConcat(
+            ColorMatrix(
+                floatArrayOf(
+                    1f, 0f, 0f, 0f, translate,
+                    0f, 1f, 0f, 0f, translate,
+                    0f, 0f, 1f, 0f, translate,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+        )
         val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
         Canvas(out).drawBitmap(
             src, 0f, 0f,

@@ -19,7 +19,7 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.MeteringPoint
 import androidx.camera.core.Preview
-import androidx.camera.core.SurfaceProvider
+import androidx.camera.core.Preview.SurfaceProvider
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
@@ -375,7 +375,7 @@ class CameraEngine(
     val videoCaptureUseCase: VideoCapture<Recorder>? get() = videoCapture
     val recorderInstance: Recorder? get() = recorder
 
-    private fun deliverFrame(proxy: android.media.ImageProxy) {
+    private fun deliverFrame(proxy: androidx.camera.core.ImageProxy) {
         try {
             val plane = proxy.planes.firstOrNull()
             if (plane != null) {

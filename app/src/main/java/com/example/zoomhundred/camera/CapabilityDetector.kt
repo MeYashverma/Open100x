@@ -7,6 +7,7 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
 import android.media.MediaCodecInfo
+import android.media.MediaFormat
 import android.media.MediaCodecList
 import android.media.MediaRecorder
 import android.os.Build
@@ -167,7 +168,7 @@ object CapabilityDetector {
             photoSizes = photoSizes,
             videoSizes = videoSizes,
             fpsRanges = c.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.toList() ?: emptyList(),
-            physicalIds = c.get(CameraCharacteristics.LOGICAL_MULTI_CAMERA_PHYSICAL_IDS)?.toSet() ?: emptySet()
+            physicalIds = c.physicalCameraIds
         )
     }
 
@@ -178,18 +179,18 @@ object CapabilityDetector {
 
         fun supports(mime: String, w: Int, h: Int, fps: Double): Boolean = infos.any { info ->
             info.supportedTypes.any { it.equals(mime, ignoreCase = true) } && runCatching {
-                val video = info.getCapabilitiesForType(mime).videoCapabilities
-                video != null && video.isSizeAndRateSupported(w, h, fps)
+                val videoCaps = info.getCapabilitiesForType(mime).videoCapabilities
+                videoCaps != null && videoCaps.isSizeAndRateSupported(w, h, fps)
             }.getOrDefault(false)
         }
 
         return EncoderCapabilities(
-            h264 = infos.any { it.supportedTypes.any { t -> t.equals(MediaCodecInfo.CodecMimeType.VIDEO_AVC, true) } },
-            hevc = infos.any { it.supportedTypes.any { t -> t.equals(MediaCodecInfo.CodecMimeType.VIDEO_HEVC, true) } },
-            supports4k30 = supports(MediaCodecInfo.CodecMimeType.VIDEO_AVC, 3840, 2160, 30.0),
-            supports4k60 = supports(MediaCodecInfo.CodecMimeType.VIDEO_AVC, 3840, 2160, 60.0) ||
-                supports(MediaCodecInfo.CodecMimeType.VIDEO_HEVC, 3840, 2160, 60.0),
-            supports1080p60 = supports(MediaCodecInfo.CodecMimeType.VIDEO_AVC, 1920, 1080, 60.0)
+            h264 = infos.any { it.supportedTypes.any { t -> t.equals(MediaFormat.MIMETYPE_VIDEO_AVC, true) } },
+            hevc = infos.any { it.supportedTypes.any { t -> t.equals(MediaFormat.MIMETYPE_VIDEO_HEVC, true) } },
+            supports4k30 = supports(MediaFormat.MIMETYPE_VIDEO_AVC, 3840, 2160, 30.0),
+            supports4k60 = supports(MediaFormat.MIMETYPE_VIDEO_AVC, 3840, 2160, 60.0) ||
+                supports(MediaFormat.MIMETYPE_VIDEO_HEVC, 3840, 2160, 60.0),
+            supports1080p60 = supports(MediaFormat.MIMETYPE_VIDEO_AVC, 1920, 1080, 60.0)
         )
     }
 
@@ -207,7 +208,9 @@ object CapabilityDetector {
         appendLine("Generated: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())}")
         appendLine()
         appendLine("APP")
-        appendLine("  version=${com.example.zoomhundred.BuildConfig.VERSION_NAME} code=${com.example.zoomhundred.BuildConfig.VERSION_CODE}")
+        appendLine("  version=" + runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrDefault("unknown"))
         appendLine("  package=${context.packageName}")
         appendLine()
         appendLine("DEVICE")
