@@ -87,6 +87,7 @@ class CameraEngine(
 
     var callback: Callback? = null
 
+    @Volatile
     var capabilities: DeviceCapabilities = DeviceCapabilities()
         private set
 
@@ -117,12 +118,26 @@ class CameraEngine(
     private var torchOn = false
 
     fun initialize(onReady: (Boolean) -> Unit) {
-        capabilities = CapabilityDetector.detect(context)
         val future = ProcessCameraProvider.getInstance(context)
-        future.addListener({
-            provider = runCatching { future.get() }.getOrNull()
-            onReady(provider != null)
-        }, ContextCompat.getMainExecutor(context))
+        val mainExecutor = ContextCompat.getMainExecutor(context)
+        val deliver: () -> Unit = {
+            future.addListener({
+                provider = runCatching { future.get() }.getOrNull()
+                onReady(provider != null)
+            }, mainExecutor)
+        }
+        // Detection walks every lens and every encoder: keep it off the main thread so a
+        // slow OEM HAL cannot delay the first frame or trigger an ANR at launch.
+        val queued = runCatching {
+            analysisExecutor.execute {
+                capabilities = CapabilityDetector.detect(context)
+                deliver()
+            }
+        }
+        if (queued.isFailure) {
+            capabilities = CapabilityDetector.detect(context)
+            deliver()
+        }
     }
 
     fun lenses(): List<LensCapabilities> = capabilities.lenses
