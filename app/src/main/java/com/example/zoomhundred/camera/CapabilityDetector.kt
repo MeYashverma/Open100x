@@ -33,10 +33,26 @@ object CapabilityDetector {
 
     fun detect(context: Context): DeviceCapabilities {
         val manager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
-            ?: return DeviceCapabilities(sdkInt = Build.VERSION.SDK_INT, detectedAtMs = System.currentTimeMillis())
+        if (manager == null) return emptyCapabilities()
+        // Whole-body guard: OEM camera HALs throw from getCameraCharacteristics,
+        // from physicalCameraIds and even from cameraIdList when the camera service
+        // is busy. Losing a capability must never take the app down.
+        return runCatching { detectWith(manager, context) }.getOrElse { error ->
+            Log.w(TAG, "capability detection failed: ${error.message}", error)
+            emptyCapabilities()
+        }
+    }
 
+    private fun emptyCapabilities(): DeviceCapabilities =
+        DeviceCapabilities(sdkInt = Build.VERSION.SDK_INT, detectedAtMs = System.currentTimeMillis())
+
+    private fun detectWith(manager: CameraManager, context: Context): DeviceCapabilities {
         val raw = ArrayList<RawLens>()
-        manager.cameraIdList.forEach { id ->
+        val ids = runCatching { manager.cameraIdList?.toList() ?: emptyList() }.getOrElse { error ->
+            Log.w(TAG, "camera id list unavailable: ${error.message}")
+            emptyList()
+        }
+        ids.forEach { id ->
             runCatching { readLens(manager, id) }
                 .onSuccess { if (it != null) raw.add(it) }
                 .onFailure { Log.w(TAG, "lens $id unreadable: ${it.message}") }

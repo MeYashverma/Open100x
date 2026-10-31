@@ -341,8 +341,8 @@ class ToolsSheet(
             }
         )
         content.addView(
-            SheetUi.switchRow(host, "Zebra stripes", "Highlights above 95% IRE", settings.zebraskaEnabled) { checked ->
-                settings.zebraskaEnabled = checked
+            SheetUi.switchRow(host, "Zebra stripes", "Highlights above 95% IRE", settings.zebraEnabled) { checked ->
+                settings.zebraEnabled = checked
                 mutate(rebind = false)
             }
         )

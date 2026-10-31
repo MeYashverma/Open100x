@@ -37,16 +37,15 @@
         app:layout_constraintTop_toTopOf="@id/previewView" />
 
     <com.example.zoomhundred.overlay.FalseColorView
-
         android:id="@+id/falseColorView"
-
         android:layout_width="0dp"
-
         android:layout_height="0dp"
-
         android:clickable="false"
-
-        android:visibility="gone" />
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintTop_toTopOf="@id/previewView" />
 
     <com.example.zoomhundred.overlay.FocusPeakingView
         android:id="@+id/peakingView"

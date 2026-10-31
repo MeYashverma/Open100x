@@ -91,32 +91,32 @@ data class ProSettings(
         }
 
         fun load(context: Context): ProSettings {
-            val p = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
+            val p = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).wipeIfCorrupt()
             return ProSettings(
-                manualMode = p.getBoolean("manualMode", false),
-                isoIndex = p.getInt("isoIndex", 3).coerceIn(0, ISO_VALUES.lastIndex),
-                shutterIndex = p.getInt("shutterIndex", 6).coerceIn(0, SHUTTER_VALUES.lastIndex),
-                evIndex = p.getInt("evIndex", 4).coerceIn(0, EV_VALUES.lastIndex),
-                focusMode = p.getBoolean("manualFocus", false).let { if (it) FocusMode.MANUAL else FocusMode.AUTO },
-                focusPosition = p.getFloat("focusPosition", 0f).coerceIn(0f, 1f),
-                wbMode = WbMode.entries.getOrElse(p.getInt("wbMode", 0)) { WbMode.AUTO },
-                wbKelvin = p.getInt("wbKelvin", 5500).coerceIn(KELVIN_MIN, KELVIN_MAX),
-                focusPeakingEnabled = p.getBoolean("focusPeaking", false),
-                histogramEnabled = p.getBoolean("histogram", true),
-                gridMode = GridMode.entries.getOrElse(p.getInt("gridMode", GridMode.THIRDS.ordinal)) { GridMode.THIRDS },
-                hudEnabled = p.getBoolean("hud", true),
-                antiShakeEnabled = p.getBoolean("antiShake", true),
-                antiShakeThreshold = p.getFloat("antiShakeThreshold", 0.05f),
-                outputFormat = OutputFormat.entries.getOrElse(p.getInt("outputFormat", 0)) { OutputFormat.JPEG },
-                rawEnabled = p.getBoolean("raw", false),
-                stripGpsExif = p.getBoolean("stripGps", false),
-                shutterSoundEnabled = p.getBoolean("shutterSound", true),
-                shutterSoundVolume = p.getInt("shutterSoundVolume", 70).coerceIn(0, 100),
-                zoomPostProcessEnabled = p.getBoolean("zoomPostProcess", true),
-                zoomPostProcessStrength = p.getInt("zoomPostProcessStrength", 55).coerceIn(0, 100),
+                manualMode = p.safeBoolean("manualMode", false),
+                isoIndex = p.safeInt("isoIndex", 3).coerceIn(0, ISO_VALUES.lastIndex),
+                shutterIndex = p.safeInt("shutterIndex", 6).coerceIn(0, SHUTTER_VALUES.lastIndex),
+                evIndex = p.safeInt("evIndex", 4).coerceIn(0, EV_VALUES.lastIndex),
+                focusMode = p.safeBoolean("manualFocus", false).let { if (it) FocusMode.MANUAL else FocusMode.AUTO },
+                focusPosition = p.safeFloat("focusPosition", 0f).coerceIn(0f, 1f),
+                wbMode = WbMode.entries.getOrElse(p.safeInt("wbMode", 0)) { WbMode.AUTO },
+                wbKelvin = p.safeInt("wbKelvin", 5500).coerceIn(KELVIN_MIN, KELVIN_MAX),
+                focusPeakingEnabled = p.safeBoolean("focusPeaking", false),
+                histogramEnabled = p.safeBoolean("histogram", true),
+                gridMode = GridMode.entries.getOrElse(p.safeInt("gridMode", GridMode.THIRDS.ordinal)) { GridMode.THIRDS },
+                hudEnabled = p.safeBoolean("hud", true),
+                antiShakeEnabled = p.safeBoolean("antiShake", true),
+                antiShakeThreshold = p.safeFloat("antiShakeThreshold", 0.05f),
+                outputFormat = OutputFormat.entries.getOrElse(p.safeInt("outputFormat", 0)) { OutputFormat.JPEG },
+                rawEnabled = p.safeBoolean("raw", false),
+                stripGpsExif = p.safeBoolean("stripGps", false),
+                shutterSoundEnabled = p.safeBoolean("shutterSound", true),
+                shutterSoundVolume = p.safeInt("shutterSoundVolume", 70).coerceIn(0, 100),
+                zoomPostProcessEnabled = p.safeBoolean("zoomPostProcess", true),
+                zoomPostProcessStrength = p.safeInt("zoomPostProcessStrength", 55).coerceIn(0, 100),
                 zoomLocked = false,
-                stabilization = StabilizationMode.entries.getOrElse(p.getInt("stabilization", 0)) { StabilizationMode.AUTO },
-                nightUiEnabled = p.getBoolean("nightUi", false)
+                stabilization = StabilizationMode.entries.getOrElse(p.safeInt("stabilization", 0)) { StabilizationMode.AUTO },
+                nightUiEnabled = p.safeBoolean("nightUi", false)
             )
         }
     }

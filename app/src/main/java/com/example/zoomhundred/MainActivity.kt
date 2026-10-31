@@ -54,6 +54,7 @@ import com.example.zoomhundred.camera.VideoConfig
 import com.example.zoomhundred.camera.ZoomEngine
 import com.example.zoomhundred.computational.AccumulationMode
 import com.example.zoomhundred.databinding.ActivityMainBinding
+import com.example.zoomhundred.diagnostics.CrashGuard
 import com.example.zoomhundred.imaging.ImageStore
 import com.example.zoomhundred.model.AppSettings
 import com.example.zoomhundred.model.AspectRatio
@@ -88,6 +89,14 @@ private const val SETTLED_TIMEOUT_MS = 2600L
 private const val EXTREME_ZOOM_THRESHOLD = 15f
 private const val RECORD_TICK_MS = 500L
 
+/** One-line, bounded description of a throwable for on-screen messages. */
+internal fun Throwable.shortMessage(): String {
+    val text = message?.trim().orEmpty()
+    val type = javaClass.simpleName
+    if (text.isEmpty()) return type
+    return "$type: " + text.take(120)
+}
+
 fun isGooglePixelDevice(): Boolean {
     val manufacturer = Build.MANUFACTURER.lowercase()
     val brand = Build.BRAND.lowercase()
@@ -119,10 +128,13 @@ class MainActivity : AppCompatActivity(),
     private lateinit var antiShake: AntiShakeController
     private lateinit var settings: AppSettings
     private lateinit var pro: ProSettings
-    private lateinit var orientationListener: OrientationEventListener
+    private var orientationListener: OrientationEventListener? = null
     private lateinit var sensorManager: SensorManager
 
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** True once the launch path completed; every lifecycle hook checks it. */
+    private var uiReady = false
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val pixelPortraitOnly = isGooglePixelDevice()
 
@@ -214,42 +226,68 @@ class MainActivity : AppCompatActivity(),
     override fun onCreate(savedInstanceState: Bundle?) {
         if (pixelPortraitOnly) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
-        settings = AppSettings.load(this)
-        pro = ProSettings.load(this)
-        mode = settings.defaultMode
-        monitorMode = when {
-            settings.peakingEnabled -> 2
-            settings.zebraskaEnabled -> 3
-            settings.histogramEnabled -> 1
-            else -> 0
+        // Launch is split into guarded phases. A camera app must never show a
+        // "keeps stopping" dialog: anything that fails is reported on screen with a
+        // copyable trace and a retry, and the rest of the UI keeps working.
+        try {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            binding = ActivityMainBinding.inflate(layoutInflater)
+            setContentView(binding.root)
+        } catch (error: Throwable) {
+            CrashGuard.record(this, "inflate", error)
+            showStartupFailure(error)
+            return
         }
-        if (settings.keepScreenOn) {
-            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        try {
+            settings = AppSettings.load(this)
+            pro = ProSettings.load(this)
+            mode = settings.defaultMode
+            monitorMode = when {
+                settings.peakingEnabled -> 2
+                settings.zebraEnabled -> 3
+                settings.histogramEnabled -> 1
+                else -> 0
+            }
+            if (settings.keepScreenOn) {
+                window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            antiShake = AntiShakeController(this)
+            recorderController = VideoRecorderController(this).apply { listener = this@MainActivity }
+
+            engine = CameraEngine(this, this).apply { callback = this@MainActivity }
+            coordinator = CaptureCoordinator(
+                context = this,
+                engine = engine,
+                settings = { settings },
+                pro = { pro }
+            ).apply { listener = this@MainActivity }
+
+            setupUi()
+            setupInsets()
+            setupSensors()
+        } catch (error: Throwable) {
+            CrashGuard.record(this, "startup", error)
+            showStartupFailure(error)
+            return
         }
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        antiShake = AntiShakeController(this)
-        recorderController = VideoRecorderController(this).apply { listener = this@MainActivity }
 
-        engine = CameraEngine(this, this).apply { callback = this@MainActivity }
-        coordinator = CaptureCoordinator(
-            context = this,
-            engine = engine,
-            settings = { settings },
-            pro = { pro }
-        ).apply { listener = this@MainActivity }
-
-        setupUi()
-        setupInsets()
-        setupSensors()
-        ensurePermissionAndStart()
+        uiReady = true
+        try {
+            ensurePermissionAndStart()
+        } catch (error: Throwable) {
+            CrashGuard.record(this, "camera start", error)
+            showCameraUnavailable(error.shortMessage())
+        }
+        // A trace from the previous session is far more useful than a silent restart.
+        mainHandler.postDelayed({ showPreviousCrashIfAny() }, 900L)
     }
 
     override fun onResume() {
         super.onResume()
+        if (!uiReady) return
         val previous = settings
         settings = AppSettings.load(this)
         applySettingsToUi()
@@ -262,22 +300,32 @@ class MainActivity : AppCompatActivity(),
             if (engine.isBound) bindCamera()
         }
         if (antiShake.isAvailable) startAntiShake()
-        if (!pixelPortraitOnly && orientationListener.canDetectOrientation()) orientationListener.enable()
+        if (!pixelPortraitOnly) {
+            orientationListener?.takeIf { it.canDetectOrientation() }?.enable()
+        }
         refreshThumbnail()
     }
 
     override fun onPause() {
+        if (!uiReady) {
+            super.onPause()
+            return
+        }
         cancelCountdown()
         cancelSettledCapture()
         if (recordingActive) stopRecording()
         antiShake.stop()
-        if (!pixelPortraitOnly) orientationListener.disable()
+        orientationListener?.disable()
         settings.save(this)
         pro.save(this)
         super.onPause()
     }
 
     override fun onDestroy() {
+        if (!uiReady) {
+            super.onDestroy()
+            return
+        }
         coordinator.release()
         engine.shutdown()
         recorderController.release()
@@ -291,12 +339,14 @@ class MainActivity : AppCompatActivity(),
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        if (!uiReady) return
         if (!pixelPortraitOnly) engine.updateRotation(displayRotation())
         updateAspectGuide()
         updateLoupeSource()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (!uiReady) return super.onKeyDown(keyCode, event)
         return when (keyCode) {
             KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN -> {
                 val direction = if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) 1 else -1
@@ -428,19 +478,43 @@ class MainActivity : AppCompatActivity(),
         binding.captureStatusText.text = getString(R.string.loading_camera)
         engine.initialize { ready ->
             if (isFinishing || isDestroyed) return@initialize
-            if (!ready) {
-                toast(getString(R.string.bind_failed, "camera provider unavailable"))
-                return@initialize
+            try {
+                if (!ready) {
+                    showCameraUnavailable("camera provider unavailable")
+                    return@initialize
+                }
+                capabilities = engine.capabilities
+                if (capabilities.lenses.isEmpty()) {
+                    // Never finish() here: an empty list can also mean a transient HAL
+                    // failure, and closing the app looks exactly like a crash.
+                    showCameraUnavailable("no camera reported by the system")
+                    return@initialize
+                }
+                currentLens = pickDefaultLens()
+                bindCamera()
+            } catch (error: Throwable) {
+                CrashGuard.record(this, "camera start", error)
+                showCameraUnavailable(error.shortMessage())
             }
-            capabilities = engine.capabilities
-            if (capabilities.lenses.isEmpty()) {
-                toast(getString(R.string.no_camera_found))
-                finish()
-                return@initialize
-            }
-            currentLens = pickDefaultLens()
-            bindCamera()
         }
+    }
+
+    /** Keeps the app open and explains what the hardware/OS refused to do. */
+    private fun showCameraUnavailable(reason: String) {
+        if (!::binding.isInitialized) return
+        binding.captureStatusText.visibility = View.VISIBLE
+        binding.captureStatusText.text = getString(R.string.no_camera_found) + " Tap to retry"
+        binding.captureStatusText.isClickable = true
+        binding.captureStatusText.setOnClickListener { recreate() }
+        toast(reason)
+        runCatching {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.no_camera_found))
+                .setMessage(reason + "\n\n" + getString(R.string.camera_unavailable_hint))
+                .setPositiveButton(getString(R.string.retry)) { _, _ -> recreate() }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }.onFailure { android.util.Log.w(TAG, "camera-unavailable dialog failed", it) }
     }
 
     private fun pickDefaultLens(): LensCapabilities? {
@@ -469,6 +543,16 @@ class MainActivity : AppCompatActivity(),
             toast(getString(R.string.bind_failed, "session rejected"))
             return
         }
+        try {
+            bindSessionUi(lens)
+        } catch (error: Throwable) {
+            // The preview is already live; a UI-side failure must not take the app down.
+            CrashGuard.record(this, "bind session", error)
+            toast(getString(R.string.bind_failed, error.shortMessage()))
+        }
+    }
+
+    private fun bindSessionUi(lens: LensCapabilities) {
         minZoom = engine.minZoom
         maxZoom = min(100f, max(engine.maxZoom, lens.maxZoomRatio))
         zoomEngine = ZoomEngine(minZoom, engine.maxZoom, maxZoom)
@@ -1087,6 +1171,14 @@ class MainActivity : AppCompatActivity(),
     }
 
     private fun applySettingsToUi() {
+        try {
+            applySettingsToUiUnsafe()
+        } catch (error: Throwable) {
+            CrashGuard.record(this, "applySettingsToUi", error)
+        }
+    }
+
+    private fun applySettingsToUiUnsafe() {
         binding.hdrButton.isSelected = settings.hdrEnabled
         binding.hdrButton.visibility = if (mode == CaptureMode.PHOTO) View.VISIBLE else View.GONE
         binding.gridOverlay.gridMode = if (settings.gridMode == GridMode.NONE) GridMode.NONE else settings.gridMode
@@ -1172,7 +1264,7 @@ class MainActivity : AppCompatActivity(),
     private fun cycleMonitoring() {
         monitorMode = (monitorMode + 1) % 5
         settings.peakingEnabled = monitorMode == 2
-        settings.zebraskaEnabled = monitorMode == 3
+        settings.zebraEnabled = monitorMode == 3
         settings.histogramEnabled = monitorMode == 1
         settings.save(this)
         updateMonitorVisibility()
@@ -1672,7 +1764,7 @@ class MainActivity : AppCompatActivity(),
                 ) {
                     settings.histogramEnabled = histogram
                     settings.peakingEnabled = peaking
-                    settings.zebraskaEnabled = zebra
+                    settings.zebraEnabled = zebra
                     settings.levelEnabled = level
                     monitorMode = when {
                         peaking -> 2
@@ -1699,9 +1791,14 @@ class MainActivity : AppCompatActivity(),
 
     private fun refreshThumbnail() {
         ioExecutor.execute {
-            val latest = ImageStore.latestPhoto(contentResolver, settings.saveSubfolder)
-            val bitmap = latest?.let {
-                runCatching { contentResolver.loadThumbnail(it.uri, Size(160, 160), null) }.getOrNull()
+            val bitmap = try {
+                val latest = ImageStore.latestPhoto(contentResolver, settings.saveSubfolder)
+                latest?.let {
+                    runCatching { contentResolver.loadThumbnail(it.uri, Size(160, 160), null) }.getOrNull()
+                }
+            } catch (error: Throwable) {
+                CrashGuard.record(this, "thumbnail", error)
+                null
             }
             mainHandler.post {
                 if (bitmap != null) {
@@ -1735,6 +1832,83 @@ class MainActivity : AppCompatActivity(),
 
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    // ── Failure reporting ─────────────────────────────────────────────────────
+
+    /**
+     * Rendered when the launch path itself failed (inflation, settings, sensors).
+     * The screen is built in code so it cannot depend on the very resources that
+     * may have broken, and it always offers a copyable trace.
+     */
+    private fun showStartupFailure(error: Throwable) {
+        val detail = CrashGuard.describe(this, error)
+        val body = TextView(this).apply {
+            setTextColor(0xFFEDEDF2.toInt())
+            textSize = 12f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            text = "Open 100x could not start.\n\n" +
+                error.javaClass.name + ": " + (error.message ?: "no message") + "\n\n" +
+                "Copy this report and send it so the cause can be fixed.\n\n" + detail
+        }
+        val copy = android.widget.Button(this).apply {
+            text = "Copy report"
+            setOnClickListener {
+                copyToClipboard(detail)
+                toast("Report copied")
+            }
+        }
+        val retry = android.widget.Button(this).apply {
+            text = "Retry"
+            setOnClickListener { recreate() }
+        }
+        val buttons = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            addView(copy)
+            addView(retry)
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(body) }
+        val root = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(0xFF07080A.toInt())
+            addView(buttons, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+            addView(scroll, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+            ))
+        }
+        setContentView(root)
+    }
+
+    /** Surfaces a trace recorded by the previous session. */
+    private fun showPreviousCrashIfAny() {
+        if (isFinishing || isDestroyed) return
+        val previous = CrashGuard.lastCrash(this) ?: return
+        runCatching {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.crash_report_title))
+                .setMessage(previous.takeLast(1200))
+                .setPositiveButton(getString(R.string.crash_report_copy)) { _, _ ->
+                    copyToClipboard(previous)
+                    toast("Report copied")
+                }
+                .setNeutralButton(getString(R.string.crash_report_clear)) { _, _ ->
+                    CrashGuard.clear(this)
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }.onFailure { android.util.Log.w(TAG, "crash dialog unavailable", it) }
+    }
+
+    private fun copyToClipboard(text: String) {
+        runCatching {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Open 100x report", text))
+        }
     }
 
     private fun formatDuration(ms: Long): String {

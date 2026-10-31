@@ -3,6 +3,39 @@
 All notable changes to Open 100x. The app keeps its package identity
 (`com.example.zoomhundred`) and its release/signing configuration across versions.
 
+## [2.0.1] — startup stability
+
+Follow-up to the 2.0.0 rewrite after the app was reported as "not opening / keeps crashing".
+
+### Fixed — launch path
+* `CapabilityDetector.detect` no longer lets a throwing OEM camera HAL kill the app:
+  `CameraManager.cameraIdList` is guarded, and the whole detection body is wrapped with a
+  fallback to empty capabilities.
+* `MainActivity` no longer calls `finish()` when no lens is reported. A transient HAL
+  failure used to look exactly like a crash; the screen now stays up, explains the reason
+  and offers Retry.
+* The launch path (`inflate` → settings → controllers → UI → camera start) is split into
+  guarded phases. A failure shows a code-built error screen with the exception and a
+  copyable trace instead of the system "keeps stopping" dialog.
+* Camera session UI work (`bindSessionUi`) and `applySettingsToUi` are individually
+  guarded: a UI-side bug can no longer take down a live preview.
+* `onResume`/`onPause`/`onDestroy`/`onConfigurationChanged`/`onKeyDown` check an
+  initialisation flag, so a partial start cannot throw later.
+* `OrientationEventListener` is nullable — a sensor failure no longer leaves an
+  uninitialised `lateinit`.
+* Thumbnail loading on the I/O executor can no longer throw out of the thread.
+
+### Fixed — settings
+* New `SharedPreferences.safeInt/safeBoolean/safeFloat/safeString` helpers; every settings
+  read now falls back to its default instead of throwing `ClassCastException` when a key
+  changed type between releases (a classic crash-on-open after updating).
+
+### Added — crash reporting
+* `Open100xApp` + `diagnostics/CrashGuard`: uncaught exceptions and recoverable failures
+  are written to `files/crash/last_crash.txt` (device, OS, stack trace only — no photos,
+  no EXIF, no location, nothing uploaded). The next launch offers the trace with a copy
+  button, so an OEM-specific failure can be reported without a debugger.
+
 ## [2.0.0] — redesign + camera engine rewrite
 
 This is a full re-architecture of the app around a capability-driven camera engine, plus a

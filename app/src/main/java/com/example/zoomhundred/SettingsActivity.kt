@@ -335,8 +335,8 @@ class SettingsActivity : AppCompatActivity() {
         column.addView(SheetUi.switchRow(this, "Focus peaking", null, settings.peakingEnabled) {
             settings.peakingEnabled = it; persist()
         })
-        column.addView(SheetUi.switchRow(this, "Zebra", null, settings.zebraskaEnabled) {
-            settings.zebraskaEnabled = it; persist()
+        column.addView(SheetUi.switchRow(this, "Zebra", null, settings.zebraEnabled) {
+            settings.zebraEnabled = it; persist()
         })
         column.addView(SheetUi.switchRow(this, "Spirit level", null, settings.levelEnabled) {
             settings.levelEnabled = it; persist()

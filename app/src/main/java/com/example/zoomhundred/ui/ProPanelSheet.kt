@@ -303,7 +303,7 @@ class ProPanelSheet(
             SheetUi.switchRow(host, "Histogram", null, settings.histogramEnabled) { checked ->
                 settings.histogramEnabled = checked
                 callbacks.onMonitoringChanged(
-                    checked, settings.peakingEnabled, settings.zebraskaEnabled, settings.levelEnabled
+                    checked, settings.peakingEnabled, settings.zebraEnabled, settings.levelEnabled
                 )
             }
         )
@@ -311,13 +311,13 @@ class ProPanelSheet(
             SheetUi.switchRow(host, "Focus peaking", null, settings.peakingEnabled) { checked ->
                 settings.peakingEnabled = checked
                 callbacks.onMonitoringChanged(
-                    settings.histogramEnabled, checked, settings.zebraskaEnabled, settings.levelEnabled
+                    settings.histogramEnabled, checked, settings.zebraEnabled, settings.levelEnabled
                 )
             }
         )
         content.addView(
-            SheetUi.switchRow(host, "Zebra", null, settings.zebraskaEnabled) { checked ->
-                settings.zebraskaEnabled = checked
+            SheetUi.switchRow(host, "Zebra", null, settings.zebraEnabled) { checked ->
+                settings.zebraEnabled = checked
                 callbacks.onMonitoringChanged(
                     settings.histogramEnabled, settings.peakingEnabled, checked, settings.levelEnabled
                 )
@@ -327,7 +327,7 @@ class ProPanelSheet(
             SheetUi.switchRow(host, "Spirit level", null, settings.levelEnabled) { checked ->
                 settings.levelEnabled = checked
                 callbacks.onMonitoringChanged(
-                    settings.histogramEnabled, settings.peakingEnabled, settings.zebraskaEnabled, checked
+                    settings.histogramEnabled, settings.peakingEnabled, settings.zebraEnabled, checked
                 )
             }
         )
