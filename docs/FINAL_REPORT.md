@@ -1,11 +1,36 @@
 # Open 100x — 2.0 final report
 
 **Repository:** `MeYashverma/Open100x` · **Package:** `com.example.zoomhundred` (unchanged)
-· **Version:** 2.0.0 (versionCode 3) · **Branch:** `arena/92b4e2b9-open100x`
+· **Version:** 2.0.1 (versionCode 4) · **Branch:** `arena/92b4e2b9-open100x`
 
 This report covers what was actually delivered against the brief: what changed, what was
 redesigned, what is fully working versus limited/simulated/hardware-dependent/impossible,
 what the build and test runs produced, and which bugs the work fixed.
+
+---
+
+## 0. 2.0.1 — startup stability (the "app does not open" bug)
+
+The 2.0.0 build was reported as crashing on open. The launch path was audited line by line
+and every failure mode that can kill a camera app during `onCreate` was removed:
+
+| Failure mode | Why it crashed | Fix |
+|---|---|---|
+| `CameraManager.cameraIdList` throwing (`CameraAccessException` when another app holds the camera, or from an OEM HAL) | Uncaught on the main thread while detecting capabilities | Guarded; detection body wrapped, falls back to empty capabilities. Detection now also runs off the main thread, so a slow HAL cannot delay the first frame or ANR |
+| Empty lens list | `finish()` — the app closed instantly, which looks exactly like a crash | Screen stays up, states the reason, offers Retry |
+| Any failure in `bindCamera`/session UI after a successful bind | Live preview torn down by an uncaught exception | `bindSessionUi` and `applySettingsToUi` individually guarded and logged |
+| Any legacy `SharedPreferences` type mismatch (`getInt` on a value written as `Float`/`String`) | `ClassCastException` in `AppSettings.load`, i.e. before any UI exists | New `safeInt/safeBoolean/safeFloat/safeString` readers in `model/SafePrefs.kt`; every settings read falls back to its default |
+| Thumbnail query/decoding on the I/O executor | Uncaught background exception kills the process | Fully guarded |
+| Partial initialisation | `onResume`/`onPause`/`onDestroy`/`onConfigurationChanged`/`onKeyDown` touching uninitialised `lateinit` fields | Single `uiReady` flag; nullable `OrientationEventListener` |
+| Anything else | — | Launch is split into guarded phases; a failure renders a code-built error screen (no dependency on the broken resources) with the exception and a working **Copy report** button |
+
+Crash evidence is now first-class: `diagnostics/CrashGuard` (installed by `Open100xApp`)
+writes the stack trace to `files/crash/last_crash.txt`, and the next launch shows it with
+**Copy report / Clear**. Device, OS and stack trace only — no photos, no EXIF, no location,
+nothing uploaded.
+
+The 2.0.1 APK is built by CI on every push (artifact `open100x-apks`) and by the
+tag-triggered release workflow.
 
 ---
 
