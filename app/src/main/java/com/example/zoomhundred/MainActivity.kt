@@ -1093,6 +1093,8 @@ class MainActivity : AppCompatActivity(),
     private fun buildZoomCapsule(presets: List<ZoomPreset>) {
         val container = binding.zoomPresetRow
         container.removeAllViews()
+        // Nothing to show until the lens reports its stops.
+        container.visibility = if (presets.isEmpty()) View.GONE else View.VISIBLE
         val chips = ArrayList<Pair<Float, TextView>>()
         presets.take(6).forEach { preset ->
             val chip = TextView(this).apply {
