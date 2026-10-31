@@ -3,6 +3,41 @@
 All notable changes to Open 100x. The app keeps its package identity
 (`com.example.zoomhundred`) and its release/signing configuration across versions.
 
+## [2.0.3] — the root cause: invalid vector path data
+
+Reported trace (OPPO CPH2731, Android 16 / SDK 36):
+
+```
+android.view.InflateException: Binary XML file line #222 in layout/activity_main:
+  Error inflating class ImageView
+Caused by: Resources$NotFoundException: File res/drawable/ic_timer.xml
+Caused by: IllegalArgumentException: a needs to be followed by a multiple of 7 floats.
+  However, 10 float(s) are found. Failure occurred at position 6 of path:
+  M12 21a8 8 0 100-16 8 8 0 000 16z
+```
+
+The icon set used compact SVG arc syntax (`a8 8 0 100-16`), where the two arc flags are
+written without separators. Android's `PathParser` is stricter than a browser: it reads `100`
+as a *single* number, so the arc ends up with 10 parameters instead of 7 and the whole vector
+is rejected. `aapt` does not validate path data, so it compiled cleanly and then threw every
+time `activity_main` was inflated — the app could never open. This is the original bug; the
+`onWindowFocusChanged` crash fixed in 2.0.2 was the *fallout*, because inflating the layout
+failed, leaving `binding` uninitialised.
+
+### Fixed
+* **22 vector drawables** repaired: every malformed path was re-parsed with the SVG grammar
+  (arc flags as single digits) and re-serialised with explicit separators. All 133
+  `android:pathData` values in the app now parse under Android's stricter rules.
+* Version 2.0.3 / versionCode 6.
+
+### Added — regression tests
+* `resources/VectorDrawablePathTest` walks every `android:pathData` in `res/` and asserts each
+  command receives a multiple of its arity, mirroring `PathParser`. A malformed icon can no
+  longer reach a device.
+* `resources/LayoutParityTest` asserts that every `activity_main` configuration variant
+  declares exactly the same view ids as `layout/activity_main.xml`, which is what ViewBinding
+  requires at inflation time.
+
 ## [2.0.2] — the actual launch crash, fixed
 
 **Root cause, confirmed from a reported stack trace on an OPPO CPH2731 running Android 16

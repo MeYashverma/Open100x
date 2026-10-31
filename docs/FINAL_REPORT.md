@@ -1,7 +1,7 @@
 # Open 100x — 2.0 final report
 
 **Repository:** `MeYashverma/Open100x` · **Package:** `com.example.zoomhundred` (unchanged)
-· **Version:** 2.0.2 (versionCode 5) · **Branch:** `arena/92b4e2b9-open100x`
+· **Version:** 2.0.3 (versionCode 6) · **Branch:** `arena/92b4e2b9-open100x`
 
 This report covers what was actually delivered against the brief: what changed, what was
 redesigned, what is fully working versus limited/simulated/hardware-dependent/impossible,
@@ -9,7 +9,29 @@ what the build and test runs produced, and which bugs the work fixed.
 
 ---
 
-## 0. The "app does not open" bug — found and fixed
+## 0. The "app does not open" bug — two real defects, both fixed
+
+**Primary cause (2.0.3).** 22 vector icons were written with compact SVG arc syntax
+(`a8 8 0 100-16`), where the arc's two flags had no separators. Android's `PathParser` reads
+`100` as one number, so the arc received 10 parameters instead of 7 and the drawable was
+rejected:
+
+```
+InflateException: Error inflating class ImageView (activity_main line #222)
+  -> Resources$NotFoundException: File res/drawable/ic_timer.xml
+  -> IllegalArgumentException: a needs to be followed by a multiple of 7 floats ...
+```
+
+`aapt` does not validate path data, so this compiled and then failed on every launch. All 22
+icons were re-parsed with the SVG grammar and re-serialised with explicit separators; all 133
+paths in the app now validate under Android's rules.
+
+**Secondary cause (2.0.2).** On this OEM build `onWindowFocusChanged()` is dispatched during
+`super.onCreate()`, before inflation. It refreshed the aspect guide and dereferenced
+`binding`/`settings`, which were uninitialised — a crash that also existed independently and
+that became visible once the inflate failure was caught instead of fatal.
+
+### 2.0.2 — window-focus crash
 
 **Reported trace (OPPO CPH2731, Android 16 / SDK 36):**
 
