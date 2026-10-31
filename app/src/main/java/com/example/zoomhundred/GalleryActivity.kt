@@ -229,7 +229,8 @@ class GalleryActivity : AppCompatActivity() {
      * is never shown on its side — reading the tag from a provider stream is unreliable,
      * which is why [com.example.zoomhundred.imaging.BitmapOps] goes through a descriptor.
      */
-    private fun decodeSampled(uri: android.net.Uri): Bitmap? = try {
+    private fun decodeSampled(uri: android.net.Uri): Bitmap? {
+        return try {
         val decoded = run {
             contentResolver.openInputStream(uri)?.use { stream ->
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -248,11 +249,13 @@ class GalleryActivity : AppCompatActivity() {
         val orientation = com.example.zoomhundred.imaging.BitmapOps.readExifOrientation(contentResolver, uri)
         if (orientation == androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL) decoded
         else com.example.zoomhundred.imaging.BitmapOps.applyExifOrientation(decoded, orientation)
-    } catch (_: Exception) {
-        null
+        } catch (_: Exception) {
+            null
+        }
     }
 
-    private fun decodeSampled(file: java.io.File): Bitmap? = try {
+    private fun decodeSampled(file: java.io.File): Bitmap? {
+        return try {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, bounds)
         val longest = maxOf(bounds.outWidth, bounds.outHeight)
@@ -264,8 +267,9 @@ class GalleryActivity : AppCompatActivity() {
         val orientation = com.example.zoomhundred.imaging.BitmapOps.readExifOrientation(file)
         if (orientation == androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL) decoded
         else com.example.zoomhundred.imaging.BitmapOps.applyExifOrientation(decoded, orientation)
-    } catch (_: Exception) {
-        null
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun formatDate(seconds: Long): String =
