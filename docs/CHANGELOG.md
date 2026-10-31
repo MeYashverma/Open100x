@@ -3,6 +3,31 @@
 All notable changes to Open 100x. The app keeps its package identity
 (`com.example.zoomhundred`) and its release/signing configuration across versions.
 
+## [2.1.0] — iOS / ColorOS style viewfinder
+
+The 2.0 UI was too busy: a lilac palette, pills inside pills, three zoom read-outs, a
+permanent loupe box, a shake meter, a reticle and a FoV label all on the idle screen, plus a
+mode strip that clipped its own first chip on a 360 dp-wide phone.
+
+### Changed — visual language
+* Pure black canvas (`#000000`), plain white glyphs on 40 dp touch targets, a single yellow
+  active state (`#FFD60A`). No pill-inside-pill chrome, no decorative gradients.
+* **Zoom capsule** replaces the always-on rail and the oversized read-out: circular stops
+  built from the lens' real values (max six), current stop filled white with black text,
+  tap to jump, long-press to switch lens, tap the capsule to open the fine drawer.
+* **Mode strip** is plain scrollable text (no button backgrounds); the active mode is yellow
+  and the strip auto-centres it, which fixes the clipped PHOTO/PORTRAIT chip.
+* **Shutter row is thumbnail — shutter — flip**, stock-camera order; the recording timer moved
+  to the top as a pill.
+* **Decluttered idle screen**: loupe, HUD, histogram, level, shake panel and the extreme-zoom
+  reticle/FoV read-out are off by default and belong to Pro mode. Transient hints now
+  auto-dismiss after 3.2 s instead of lingering (the stray "Software fisheye" note).
+* Lens badge reads the lens name only; zoom lives in the capsule.
+* Zoom drawer (tap the capsule) holds lens switch, fine slider, log rail, flashlight and the
+  Pro entry.
+* Landscape uses the same design; view ids are identical across configurations, enforced by
+  `LayoutParityTest`.
+
 ## [2.0.4] — camera startup: diagnose and survive OEM bind rejection
 
 After the vector fix the UI launched, but the viewfinder stayed black. A failed bind only

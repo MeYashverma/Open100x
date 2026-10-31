@@ -1,7 +1,7 @@
 # Open 100x — 2.0 final report
 
 **Repository:** `MeYashverma/Open100x` · **Package:** `com.example.zoomhundred` (unchanged)
-· **Version:** 2.0.3 (versionCode 6) · **Branch:** `arena/92b4e2b9-open100x`
+· **Version:** 2.1.0 (versionCode 8) · **Branch:** `arena/92b4e2b9-open100x`
 
 This report covers what was actually delivered against the brief: what changed, what was
 redesigned, what is fully working versus limited/simulated/hardware-dependent/impossible,
