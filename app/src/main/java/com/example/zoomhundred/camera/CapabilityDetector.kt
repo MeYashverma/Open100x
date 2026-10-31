@@ -180,7 +180,7 @@ object CapabilityDetector {
         fun supports(mime: String, w: Int, h: Int, fps: Double): Boolean = infos.any { info ->
             info.supportedTypes.any { it.equals(mime, ignoreCase = true) } && runCatching {
                 val videoCaps = info.getCapabilitiesForType(mime).videoCapabilities
-                videoCaps != null && videoCaps.isSizeAndRateSupported(w, h, fps)
+                videoCaps != null && videoCaps.areSizeAndRateSupported(w, h, fps)
             }.getOrDefault(false)
         }
 
