@@ -93,7 +93,7 @@ class FocusPeakingView @JvmOverloads constructor(
     private var mask: Bitmap? = null
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val accent = Color.parseColor("#FF6E9BFF")
-    var enabled: Boolean = true
+    var monitorEnabled: Boolean = true
         set(value) {
             field = value
             visibility = if (value) VISIBLE else GONE
@@ -171,7 +171,7 @@ class ZebraView @JvmOverloads constructor(
     private var mask: Bitmap? = null
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val stripeColor = Color.argb(190, 242, 180, 87)
-    var enabled: Boolean = true
+    var monitorEnabled: Boolean = true
         set(value) {
             field = value
             visibility = if (value) VISIBLE else GONE
