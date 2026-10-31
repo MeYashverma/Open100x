@@ -84,6 +84,19 @@ additionally publishes a GitHub Release containing `app-debug.apk` and
 The CI release APK is **unsigned** because no keystore lives in this repository; sign it
 with your own key or install the debug APK for testing.
 
+### If the app does not open
+
+1. **Uninstall the old version first**, then install `app-debug.apk`. Updating in place from
+   1.x/2.0 keeps old preferences around; 2.0.1 reads them type-safely, but a clean install
+   removes every doubt.
+2. **Check the version**: `About` in Settings must read `2.0.1 (4)`. If it reads `2.0.0`,
+   the old APK is still installed.
+3. If it still misbehaves, it will no longer die silently: the app shows either a startup
+   error screen or a "Last session closed unexpectedly" dialog, both with a **Copy report**
+   button. Copy that text and it contains the full stack trace, device model and Android
+   version — everything needed to fix the cause. Reports live in
+   `files/crash/last_crash.txt` inside the app's private storage and are never uploaded.
+
 ## How it fits together
 
 ```
