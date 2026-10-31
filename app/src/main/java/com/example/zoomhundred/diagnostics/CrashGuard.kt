@@ -28,6 +28,7 @@ object CrashGuard {
     private const val TAG = "CrashGuard"
     private const val DIR = "crash"
     private const val FILE = "last_crash.txt"
+    private const val ERRORS_FILE = "recent_errors.txt"
     private const val MAX_CHARS = 16_000
 
     @Volatile
@@ -47,11 +48,28 @@ object CrashGuard {
         }
     }
 
-    /** Records a recoverable failure (startup, camera bind, background work). */
+    /**
+     * Records a recoverable failure (camera bind, background work, thumbnail loading).
+     *
+     * Deliberately kept out of [lastCrash]: a handled camera error must not send the next
+     * launch into safe mode. These diagnostics are for the in-app report and diagnostics
+     * export only.
+     */
     fun record(context: Context, where: String, error: Throwable) {
         Log.w(TAG, "$where failed", error)
-        runCatching { write(context.applicationContext, where, error) }
+        runCatching {
+            val file = File(File(context.applicationContext.filesDir, DIR).apply { if (!exists()) mkdirs() }, ERRORS_FILE)
+            val existing = if (file.exists()) file.readText() else ""
+            val entry = stamp() + " [" + where + "] " + error.javaClass.name + ": " + (error.message ?: "") + "\n"
+            file.writeText((entry + existing).take(MAX_CHARS))
+        }
     }
+
+    /** Recent handled failures, newest first. Empty when nothing has gone wrong. */
+    fun recentErrors(context: Context): String? = runCatching {
+        val file = File(context.filesDir, DIR + "/" + ERRORS_FILE)
+        if (file.exists()) file.readText().trim().ifEmpty { null } else null
+    }.getOrNull()
 
     /** The previous session's report, or null when the last session was clean. */
     fun lastCrash(context: Context): String? = runCatching {

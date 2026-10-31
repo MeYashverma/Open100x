@@ -81,7 +81,11 @@ class LauncherActivity : Activity() {
             )
             addView(
                 buttons(
-                    "Copy report" to { copyToClipboard(report) },
+                    "Copy report" to {
+                        copyToClipboard(report)
+                        CrashGuard.clear(this@LauncherActivity)
+                        startCamera()
+                    },
                     "Reset settings" to { resetSettingsAndStart() }
                 ),
                 LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)

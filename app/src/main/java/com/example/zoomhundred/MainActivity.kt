@@ -88,6 +88,7 @@ private const val SETTLED_MIN_DELAY_MS = 320L
 private const val SETTLED_TIMEOUT_MS = 2600L
 private const val EXTREME_ZOOM_THRESHOLD = 15f
 private const val RECORD_TICK_MS = 500L
+private const val FIRST_FRAME_TIMEOUT_MS = 5000L
 
 /** One-line, bounded description of a throwable for on-screen messages. */
 internal fun Throwable.shortMessage(): String {
@@ -135,6 +136,21 @@ class MainActivity : AppCompatActivity(),
 
     /** True once the launch path completed; every lifecycle hook checks it. */
     private var uiReady = false
+
+    /** One explanatory dialog per screen; later errors stay in the status line. */
+    private var cameraErrorDialogShown = false
+
+    /** Set by the first analysis frame; the watchdog reports a silently frozen session. */
+    @Volatile
+    private var firstFrameSeen = false
+
+    private val firstFrameWatchdog = object : Runnable {
+        override fun run() {
+            if (uiReady && !firstFrameSeen) {
+                showCameraError("camera opened but delivered no frames within 5 s")
+            }
+        }
+    }
     private val ioExecutor = Executors.newSingleThreadExecutor()
     private val pixelPortraitOnly = isGooglePixelDevice()
 
@@ -548,7 +564,9 @@ class MainActivity : AppCompatActivity(),
             forceRaw = forceRaw
         )
         if (!ok) {
-            toast(getString(R.string.bind_failed, "session rejected"))
+            showCameraError(
+                engine.lastBindDiagnostic.ifBlank { "session rejected by the camera HAL" }
+            )
             return
         }
         try {
@@ -569,6 +587,11 @@ class MainActivity : AppCompatActivity(),
         binding.lensBadgeText.text = lensLabel(lens)
         binding.proModeBadge.visibility = if (pro.manualMode || mode == CaptureMode.PRO) View.VISIBLE else View.GONE
         applySessionSettings()
+        // "Bound but black" is a real failure: if the analysis stream never delivers a
+        // frame, say so instead of leaving an empty viewfinder.
+        firstFrameSeen = false
+        mainHandler.removeCallbacks(firstFrameWatchdog)
+        if (engine.usingAnalysis) mainHandler.postDelayed(firstFrameWatchdog, FIRST_FRAME_TIMEOUT_MS)
         binding.captureStatusText.visibility = View.GONE
         refreshThumbnail()
         updateAspectGuide()
@@ -611,6 +634,10 @@ class MainActivity : AppCompatActivity(),
     // ── Camera engine callbacks ───────────────────────────────────────────────
 
     override fun onAnalysisFrame(frame: LumaFrame) {
+        if (!firstFrameSeen) {
+            firstFrameSeen = true
+            mainHandler.removeCallbacks(firstFrameWatchdog)
+        }
         val now = SystemClock.uptimeMillis()
         if (monitorMode == 1 && now - lastHistogramMs >= HISTOGRAM_INTERVAL_MS) {
             lastHistogramMs = now
@@ -635,7 +662,38 @@ class MainActivity : AppCompatActivity(),
     }
 
     override fun onEngineError(message: String) {
-        mainHandler.post { toast(getString(R.string.bind_failed, message)) }
+        mainHandler.post { showCameraError(message) }
+    }
+
+    /**
+     * A camera that fails to bind (or binds and then reports an error) used to produce a
+     * two-second toast over a black viewfinder, which is indistinguishable from "the app is
+     * broken". Now the reason stays on screen, can be copied, and is recorded.
+     */
+    private fun showCameraError(message: String) {
+        if (isFinishing || isDestroyed) return
+        CrashGuard.record(this, "camera engine", IllegalStateException(message))
+        if (!::binding.isInitialized) return
+        binding.lensBadgeText.text = "CAMERA ERROR"
+        binding.captureStatusText.visibility = View.VISIBLE
+        binding.captureStatusText.text = message.take(70) + " · tap to retry"
+        binding.captureStatusText.isClickable = true
+        binding.captureStatusText.setOnClickListener { recreate() }
+        toast(getString(R.string.bind_failed, message))
+        if (cameraErrorDialogShown) return
+        cameraErrorDialogShown = true
+        runCatching {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("Camera could not start")
+                .setMessage(message + "\n\n" + getString(R.string.camera_unavailable_hint))
+                .setPositiveButton(getString(R.string.retry)) { _, _ -> recreate() }
+                .setNeutralButton("Copy") { _, _ ->
+                    copyToClipboard(message + "\n\n" + (CrashGuard.recentErrors(this) ?: ""))
+                    toast("Copied")
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }.onFailure { android.util.Log.w(TAG, "camera error dialog failed", it) }
     }
 
     override fun onZoomCapabilitiesChanged(minZoomRatio: Float, maxZoomRatio: Float) {

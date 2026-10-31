@@ -3,6 +3,34 @@
 All notable changes to Open 100x. The app keeps its package identity
 (`com.example.zoomhundred`) and its release/signing configuration across versions.
 
+## [2.0.4] — camera startup: diagnose and survive OEM bind rejection
+
+After the vector fix the UI launched, but the viewfinder stayed black. A failed bind only
+produced a two-second toast, and a session that opened without producing frames produced
+nothing at all, so the screen was indistinguishable from a hang.
+
+### Added — diagnostics
+* `CameraEngine.bind` now tries the requested use-case set and then degrades step by step —
+  preview + analysis + capture → preview + capture → preview + analysis → preview → preview
+  without any Camera2 interop → preview with the default facing selector — instead of giving
+  up on the first rejection. Each attempt logs its own failure.
+* The first failure's type and message are kept in `lastBindDiagnostic` and shown, not toasted:
+  persistent status line, a one-off dialog with **Retry / Copy / Cancel**, and a `CAMERA ERROR`
+  badge. `Copy` includes the recent handled-error log.
+* The live session's `CameraState` is observed; an error state (`ERROR_STREAM_CONFIG`,
+  `ERROR_CAMERA_IN_USE`, …) is reported with its code and cause.
+* A first-frame watchdog reports "camera opened but delivered no frames within 5 s" when the
+  analysis stream never ticks, which is what a silently frozen session looks like.
+* Handled errors are now written to `files/crash/recent_errors.txt` and **no longer trigger
+  safe mode** on the next launch (only real crashes do).
+
+### Changed
+* `PreviewView` uses `implementationMode="compatible"` (TextureView). SurfaceView previews are
+  a known black-screen source on some OEM builds with edge-to-edge windows and heavy overlays,
+  and TextureView composites correctly with the loupe/grid/zebra stack and digital-zoom scale.
+* AE/AWB/AF Camera2 interop keys are only injected when the user actually took manual control;
+  pushing AUTO values into every repeating request is redundant and some HALs reject it.
+
 ## [2.0.3] — the root cause: invalid vector path data
 
 Reported trace (OPPO CPH2731, Android 16 / SDK 36):

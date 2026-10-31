@@ -140,17 +140,23 @@ object CameraControls {
         pro: ProSettings,
         lens: LensCapabilities
     ) {
+        // Only touch AE when the user has actually taken over. Injecting AUTO/AE_ON into
+        // every repeating request is redundant (CameraX already owns it) and some OEM HALs
+        // answer such a request with an empty preview.
         if (pro.manualMode && lens.supportsManualSensor) {
             ext.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
             ext.setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, clampIso(pro.isoValue(), lens))
             ext.setCaptureRequestOption(CaptureRequest.SENSOR_EXPOSURE_TIME, clampExposure(pro.shutterNanos(), lens))
-        } else {
+        } else if (pro.exposureLocked) {
             ext.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
+            ext.setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, true)
         }
     }
 
     private fun applyAwbToInterop(ext: Camera2Interop.Extender<*>, pro: ProSettings) {
+        if (pro.wbMode == WbMode.AUTO && !pro.wbLocked) return
         ext.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, awbModeFor(pro.wbMode))
+        if (pro.wbLocked) ext.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_LOCK, true)
     }
 
     private fun applyAwbToSession(
@@ -186,14 +192,16 @@ object CameraControls {
         pro: ProSettings,
         lens: LensCapabilities
     ) {
+        // Same rule as exposure: only override AF when the user chose manual focus or an
+        // AF lock. CameraX's default AF is correct otherwise.
         if (pro.focusMode == FocusMode.MANUAL && lens.minFocusDistanceDiopters > 0f) {
             ext.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
             ext.setCaptureRequestOption(
                 CaptureRequest.LENS_FOCUS_DISTANCE,
                 focusDiopters(pro.focusPosition, lens)
             )
-        } else {
-            ext.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+        } else if (pro.focusLocked) {
+            ext.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_AUTO)
         }
     }
 

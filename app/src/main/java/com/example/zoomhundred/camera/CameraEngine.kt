@@ -159,54 +159,51 @@ class CameraEngine(
         video: VideoConfig,
         forceRaw: Boolean = false
     ): Boolean {
-        val cameraProvider = provider ?: return false
+        val cameraProvider = provider ?: run {
+            lastBindDiagnostic = "camera provider unavailable"
+            callback?.onEngineError(lastBindDiagnostic)
+            return false
+        }
         currentMode = mode
         currentLens = lens
         rawOutput = forceRaw
+        val selector = selectorFor(lens)
 
         val previewStabSupported = lens.previewStabilizationSupported &&
             (settings.videoStabilization == StabilizationMode.ELECTRONIC ||
                 settings.videoStabilization == StabilizationMode.AUTO)
-        val previewBuilder = CameraControls.previewBuilder(pro, lens, rotation, settings.videoStabilization, previewStabSupported)
-        val newPreview = previewBuilder.build().apply { setSurfaceProvider(surfaceProvider) }
 
-        val analysisResolution = ResolutionSelector.Builder()
-            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
-            .setResolutionStrategy(
-                ResolutionStrategy(Size(640, 480), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER)
-            )
-            .build()
-
-        val newAnalysis = ImageAnalysis.Builder()
-            .setResolutionSelector(analysisResolution)
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .setTargetRotation(rotation)
-            .build()
-            .apply {
-                setAnalyzer(analysisExecutor) { proxy -> deliverFrame(proxy) }
+        fun newPreview(withInterop: Boolean, rotationDegrees: Int? = rotation): Preview {
+            val builder = if (withInterop) {
+                CameraControls.previewBuilder(
+                    pro, lens, rotation, settings.videoStabilization, previewStabSupported
+                )
+            } else {
+                val plain = Preview.Builder()
+                if (rotationDegrees != null) plain.setTargetRotation(rotationDegrees)
+                plain
             }
+            return builder.build().apply { setSurfaceProvider(surfaceProvider) }
+        }
 
-        val selector = selectorFor(lens)
-        val useCases = ArrayList<androidx.camera.core.UseCase>(3)
-        useCases.add(newPreview)
-        useCases.add(newAnalysis)
+        fun newAnalysis(): ImageAnalysis {
+            val resolution = ResolutionSelector.Builder()
+                .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                .setResolutionStrategy(
+                    ResolutionStrategy(Size(640, 480), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER)
+                )
+                .build()
+            return ImageAnalysis.Builder()
+                .setResolutionSelector(resolution)
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setTargetRotation(rotation)
+                .build()
+                .apply { setAnalyzer(analysisExecutor) { proxy -> deliverFrame(proxy) } }
+        }
 
-        var newImageCapture: ImageCapture? = null
-        var newVideoCapture: VideoCapture<Recorder>? = null
-
-        if (mode.isVideoMode) {
-            val newRecorder = buildRecorder(video)
-            val videoBuilder = VideoCapture.Builder(newRecorder)
-            if (video.stabilization != StabilizationMode.OFF) {
-                val supported = if (video.stabilization == StabilizationMode.OPTICAL) lens.oisSupported
-                else lens.videoStabilizationSupported || lens.previewStabilizationSupported
-                if (supported) runCatching { videoBuilder.setVideoStabilizationEnabled(true) }
-            }
-            newVideoCapture = videoBuilder.build()
-            useCases.add(newVideoCapture)
-            recorder = newRecorder
-        } else {
-            newImageCapture = CameraControls.imageCaptureBuilder(
+        val recorderInstance: Recorder? = if (mode.isVideoMode) buildRecorder(video) else null
+        val imageCaptureCase: ImageCapture? = if (!mode.isVideoMode) {
+            CameraControls.imageCaptureBuilder(
                 pro = pro,
                 lens = lens,
                 rotation = rotation,
@@ -214,35 +211,148 @@ class CameraEngine(
                 raw = forceRaw,
                 stabilization = settings.videoStabilization
             ).build()
-            useCases.add(newImageCapture)
-        }
+        } else null
+        val videoCaptureCase: VideoCapture<Recorder>? = if (recorderInstance != null) {
+            val builder = VideoCapture.Builder(recorderInstance)
+            if (video.stabilization != StabilizationMode.OFF) {
+                val supported = if (video.stabilization == StabilizationMode.OPTICAL) lens.oisSupported
+                else lens.videoStabilizationSupported || lens.previewStabilizationSupported
+                if (supported) runCatching { builder.setVideoStabilizationEnabled(true) }
+            }
+            builder.build()
+        } else null
 
-        return try {
+        val previewCase = newPreview(withInterop = true)
+        val analysisCase = newAnalysis()
+
+        var firstError: Throwable? = null
+
+        fun tryBind(
+            label: String,
+            useCases: List<androidx.camera.core.UseCase>,
+            cameraSelector: CameraSelector = selector
+        ): Camera? = try {
             cameraProvider.unbindAll()
-            val boundCamera = cameraProvider.bindToLifecycle(lifecycleOwner, selector, *useCases.toTypedArray())
-            camera = boundCamera
-            preview = newPreview
-            imageAnalysis = newAnalysis
-            imageCapture = newImageCapture
-            videoCapture = newVideoCapture
-            isBound = true
-
-            val zoomState = boundCamera.cameraInfo.zoomState.value
-            minZoom = zoomState?.minZoomRatio ?: 1f
-            maxZoom = zoomState?.maxZoomRatio ?: lens.maxZoomRatio
-            callback?.onZoomCapabilitiesChanged(minZoom, maxZoom)
-
-            applySessionOptions(pro, lens, rotation, video)
-            setZoomRatio(lastZoom)
-            if (torchOn) boundCamera.cameraControl.enableTorch(true)
-            true
-        } catch (e: Exception) {
-            Log.w(TAG, "bind failed: ${e.message}")
-            isBound = false
-            callback?.onEngineError(e.message ?: "Camera unavailable")
-            false
+            cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, *useCases.toTypedArray())
+        } catch (t: Throwable) {
+            Log.w(TAG, "bind [$label] failed: ${t.javaClass.simpleName}: ${t.message}")
+            if (firstError == null) firstError = t
+            null
         }
+
+        val captureCase = imageCaptureCase ?: videoCaptureCase
+        var bound: Camera? = null
+        var usedPreview: Preview? = null
+        var usedAnalysis: ImageAnalysis? = null
+        var usedCapture = false
+
+        // 1. Everything the mode wants.
+        bound = tryBind(
+            "full",
+            listOfNotNull(previewCase, analysisCase, captureCase)
+        )
+        if (bound != null) {
+            usedPreview = previewCase
+            usedAnalysis = analysisCase
+            usedCapture = captureCase != null
+        }
+
+        // 2. Some OEM HALs reject the stream combination that CameraX reports as valid.
+        //    Drop the analysis stream: the viewfinder matters more than the loupe/histogram.
+        if (bound == null && captureCase != null) {
+            bound = tryBind("preview+capture", listOfNotNull(previewCase, captureCase))
+            if (bound != null) {
+                usedPreview = previewCase
+                usedCapture = true
+            }
+        }
+
+        // 3. Drop still/video capture, keep preview + analysis.
+        if (bound == null) {
+            bound = tryBind("preview+analysis", listOfNotNull(previewCase, analysisCase))
+            if (bound != null) {
+                usedPreview = previewCase
+                usedAnalysis = analysisCase
+            }
+        }
+
+        // 4. Preview only.
+        if (bound == null) {
+            bound = tryBind("preview", listOf(previewCase))
+            if (bound != null) usedPreview = previewCase
+        }
+
+        // 5. Preview only, with no Camera2 interop options at all: isolates our own
+        //    request customisation from a HAL that rejects it.
+        if (bound == null) {
+            val bare = newPreview(withInterop = false, rotationDegrees = null)
+            bound = tryBind("bare preview", listOf(bare))
+            if (bound != null) usedPreview = bare
+        }
+
+        // 6. Last resort: the per-lens CameraSelector itself may match nothing (a HAL that
+        //    reports camera ids differently than CameraX sees them). Fall back to the
+        //    standard facing selector so the viewfinder still comes up.
+        if (bound == null) {
+            val fallbackSelector =
+                if (lens.facing == CameraCharacteristics.LENS_FACING_FRONT) CameraSelector.DEFAULT_FRONT_CAMERA
+                else CameraSelector.DEFAULT_BACK_CAMERA
+            val bare = newPreview(withInterop = false, rotationDegrees = null)
+            bound = tryBind("default facing selector", listOf(bare), fallbackSelector)
+            if (bound != null) usedPreview = bare
+        }
+
+        if (bound == null) {
+            isBound = false
+            lastBindDiagnostic = firstError?.let {
+                it.javaClass.simpleName + ": " + (it.message ?: "no message")
+            } ?: "unknown bind failure"
+            callback?.onEngineError(lastBindDiagnostic)
+            return false
+        }
+
+        camera = bound
+        preview = usedPreview
+        imageAnalysis = usedAnalysis
+        imageCapture = if (usedCapture) imageCaptureCase else null
+        videoCapture = if (usedCapture) videoCaptureCase else null
+        recorder = if (usedCapture) recorderInstance else null
+        isBound = true
+        lastBindDiagnostic = ""
+
+        val zoomState = runCatching { bound.cameraInfo.zoomState.value }.getOrNull()
+        minZoom = zoomState?.minZoomRatio ?: 1f
+        maxZoom = zoomState?.maxZoomRatio ?: lens.maxZoomRatio
+        callback?.onZoomCapabilitiesChanged(minZoom, maxZoom)
+
+        // "Bound but black" is a real failure mode: watch the session state so it is
+        // reported instead of leaving an empty viewfinder.
+        runCatching {
+            bound.cameraInfo.cameraState.observe(lifecycleOwner, androidx.lifecycle.Observer { state ->
+                if (state == null) return@Observer
+                val error = runCatching { state.error }.getOrNull() ?: return@Observer
+                val detail = "camera error ${error.code}: " +
+                    (runCatching { error.cause?.message }.getOrNull() ?: state.type.name)
+                Log.e(TAG, detail)
+                lastBindDiagnostic = detail
+                callback?.onEngineError(detail)
+            })
+        }
+
+        runCatching { applySessionOptions(pro, lens, rotation, video) }
+            .onFailure { Log.w(TAG, "session options rejected: ${it.message}") }
+        runCatching { setZoomRatio(lastZoom) }
+        if (torchOn) runCatching { bound.cameraControl.enableTorch(true) }
+        return true
     }
+
+    /** True when the analysis stream is part of the live session (loupe/histogram). */
+    val usingAnalysis: Boolean get() = imageAnalysis != null
+
+    /** Human-readable reason the last bind failed, or "" when it succeeded. */
+    @Volatile
+    var lastBindDiagnostic: String = ""
+        private set
 
     private fun selectorFor(lens: LensCapabilities): CameraSelector =
         CameraSelector.Builder()
