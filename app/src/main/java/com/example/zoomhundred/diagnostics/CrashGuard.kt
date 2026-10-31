@@ -80,7 +80,7 @@ object CrashGuard {
     }
 
     private fun write(context: Context, where: String, error: Throwable) {
-        val body = buildString {
+        val entry = buildString {
             appendLine("Open 100x failure report")
             appendLine(stamp())
             appendLine("where=$where")
@@ -88,7 +88,14 @@ object CrashGuard {
             appendLine()
             appendLine(trace(error))
         }
-        file(context).writeText(body)
+        val file = file(context)
+        // Append, and keep the *head* of the file: the first failure is the root cause,
+        // everything after it is usually a consequence. Overwriting the file used to hide
+        // the origin of the bug behind whatever crashed next.
+        val existing = runCatching { if (file.exists()) file.readText() else "" }.getOrDefault("")
+        if (existing.contains(entry.trim())) return
+        val combined = if (existing.isBlank()) entry else existing + "\n\n" + entry
+        file.writeText(combined.take(MAX_CHARS))
     }
 
     private fun deviceLine(): String =

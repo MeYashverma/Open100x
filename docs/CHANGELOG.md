@@ -3,6 +3,33 @@
 All notable changes to Open 100x. The app keeps its package identity
 (`com.example.zoomhundred`) and its release/signing configuration across versions.
 
+## [2.0.2] — the actual launch crash, fixed
+
+**Root cause, confirmed from a reported stack trace on an OPPO CPH2731 running Android 16
+(SDK 36):**
+
+```
+kotlin.UninitializedPropertyAccessException: lateinit property binding has not been initialized
+    at MainActivity.updateAspectGuide(MainActivity.kt:1247)
+    at MainActivity.onWindowFocusChanged(MainActivity.kt:1905)
+```
+
+Some OEM builds dispatch `onWindowFocusChanged()` **during** `super.onCreate()`, before the
+activity has inflated its view hierarchy. `onWindowFocusChanged` refreshed the aspect guide
+and the loupe position unconditionally, so it dereferenced `binding` (and `settings`) while
+they were still uninitialised — the app died on every single launch, before any of the
+guarded startup code could run. It was not device-specific to 2.0.0 or 2.0.1: the same
+handler existed in both.
+
+### Fixed
+* `onWindowFocusChanged` returns early until initialisation has completed, and the refresh
+  is wrapped so it can never take the app down.
+* `displayRotation()` no longer touches `binding` before inflation.
+* Because the pre-inflation focus event is now ignored, the aspect guide and loupe source
+  are refreshed once from `onResume` after the layout has real dimensions.
+* `diagnostics/CrashGuard` now *appends* reports and keeps the head of the file, so the first
+  failure (the root cause) is never overwritten by the crashes it causes.
+
 ## [2.0.1] — startup stability
 
 Follow-up to the 2.0.0 rewrite after the app was reported as "not opening / keeps crashing".

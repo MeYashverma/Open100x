@@ -302,6 +302,16 @@ class MainActivity : AppCompatActivity(),
             orientationListener?.takeIf { it.canDetectOrientation() }?.enable()
         }
         refreshThumbnail()
+        // The focus callback that normally refreshes these arrived before inflation and
+        // was ignored; refresh once the layout has real dimensions.
+        binding.previewView.post {
+            runCatching {
+                if (!isFinishing && !isDestroyed) {
+                    updateAspectGuide()
+                    updateLoupeSource()
+                }
+            }
+        }
     }
 
     override fun onPause() {
@@ -1896,14 +1906,24 @@ class MainActivity : AppCompatActivity(),
         return String.format(java.util.Locale.US, "%02d:%02d", minutes, seconds)
     }
 
-    private fun displayRotation(): Int =
-        binding.previewView.display?.rotation ?: Surface.ROTATION_0
+    private fun displayRotation(): Int {
+        if (!::binding.isInitialized) return Surface.ROTATION_0
+        return binding.previewView.display?.rotation ?: Surface.ROTATION_0
+    }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
+        // ROOT CAUSE of "the app does not open" (OPPO CPH2731 / Android 16, SDK 36):
+        // this callback is dispatched *during* super.onCreate(), before the view hierarchy
+        // is inflated and before settings are loaded. Touching `binding` here threw
+        // UninitializedPropertyAccessException on every single launch.
+        if (!uiReady || !::binding.isInitialized || !::settings.isInitialized) return
+        if (!hasFocus) return
+        try {
             updateAspectGuide()
             updateLoupeSource()
+        } catch (error: Throwable) {
+            CrashGuard.record(this, "window focus", error)
         }
     }
 }

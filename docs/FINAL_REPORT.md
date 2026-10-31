@@ -1,7 +1,7 @@
 # Open 100x — 2.0 final report
 
 **Repository:** `MeYashverma/Open100x` · **Package:** `com.example.zoomhundred` (unchanged)
-· **Version:** 2.0.1 (versionCode 4) · **Branch:** `arena/92b4e2b9-open100x`
+· **Version:** 2.0.2 (versionCode 5) · **Branch:** `arena/92b4e2b9-open100x`
 
 This report covers what was actually delivered against the brief: what changed, what was
 redesigned, what is fully working versus limited/simulated/hardware-dependent/impossible,
@@ -9,7 +9,31 @@ what the build and test runs produced, and which bugs the work fixed.
 
 ---
 
-## 0. 2.0.1 — startup stability (the "app does not open" bug)
+## 0. The "app does not open" bug — found and fixed
+
+**Reported trace (OPPO CPH2731, Android 16 / SDK 36):**
+
+```
+kotlin.UninitializedPropertyAccessException: lateinit property binding has not been initialized
+    at com.example.zoomhundred.MainActivity.updateAspectGuide(MainActivity.kt:1247)
+    at com.example.zoomhundred.MainActivity.onWindowFocusChanged(MainActivity.kt:1905)
+```
+
+On this OEM build, `onWindowFocusChanged()` is dispatched **during `super.onCreate()`** —
+before `setContentView` has inflated anything. The handler refreshed the aspect guide and the
+loupe position unconditionally, dereferencing `binding` and `settings` while both were still
+uninitialised. Result: every launch died, before any camera code ran, which is why the app
+"never opened".
+
+**Fix:** the handler returns early until initialisation has completed (and still guards and
+wraps the refresh), `displayRotation()` no longer touches `binding` pre-inflation, and the
+swallowed focus event is replaced by a post-layout refresh from `onResume`. `CrashGuard` was
+also changed to keep the *first* report, since the original cause had been overwritten by the
+crash it triggered.
+
+Everything below was added while hunting this bug and remains in place as defence in depth.
+
+### 2.0.1 — startup hardening
 
 The 2.0.0 build was reported as crashing on open. The launch path was audited line by line
 and every failure mode that can kill a camera app during `onCreate` was removed:
