@@ -21,7 +21,7 @@ class ProSettingsTest {
     fun shutterValuesDescendInDurationAsIndexGrows() {
         // Index 0 is the longest exposure (e.g. 1/2 s) and the last index the shortest.
         assertTrue(ProSettings.SHUTTER_VALUES.size == ProSettings.SHUTTER_LABELS.size)
-        ProSettings.SHUTTER_VALUES.zipWithNext().forEach { (longer, shorter) ->
+        ProSettings.SHUTTER_VALUES.toList().zipWithNext().forEach { (longer, shorter) ->
             assertTrue("shutter table must be ordered longest → shortest", shorter <= longer)
         }
         assertTrue(ProSettings.SHUTTER_LABELS.isNotEmpty())
