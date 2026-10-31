@@ -16,6 +16,16 @@ object ExtremeZoomPostProcessor {
 
     private const val MAX_OUTPUT_PIXELS = 24_000_000
 
+    /**
+     * Public entry point for the in-memory pipeline used by [PostCapture].
+     * Returns a new bitmap; the caller owns both bitmaps.
+     */
+    fun enhanceBitmap(src: Bitmap, strengthPercent: Int): Bitmap {
+        val strength = strengthPercent.coerceIn(0, 100) / 100f
+        if (strength <= 0f) return src.copy(Bitmap.Config.ARGB_8888, true)
+        return enhance(src, strength)
+    }
+
     fun process(
         contentResolver: ContentResolver,
         uri: Uri,

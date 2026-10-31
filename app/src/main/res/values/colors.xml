@@ -1,17 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="camera_surface">#000000</color>
-    <color name="detail_text">#CCFFFFFF</color>
-    <color name="bar_black">#F0000000</color>
-    <color name="panel_scrim_color">#E6000000</color>
-    <color name="violet_primary">#C4B5FD</color>
-    <color name="violet_active">#7C3AED</color>
-    <color name="violet_container">#332A145C</color>
-    <color name="slider_halo">#557C3AED</color>
-    <color name="slider_inactive">#55FFFFFF</color>
-    <color name="preset_button_bg">#221A102E</color>
-    <color name="preset_button_stroke">#88C4B5FD</color>
-    <color name="control_button_bg">#2FFFFFFF</color>
-    <color name="shutter_bg">#FFFFFFFF</color>
-    <color name="shutter_text">#FF111111</color>
+    <!-- Surfaces: deep black viewfinder, charcoal chrome. -->
+    <color name="ink">#FF07080A</color>
+    <color name="surface_1">#FF101115</color>
+    <color name="surface_2">#FF17191E</color>
+    <color name="surface_3">#FF202329</color>
+    <color name="surface_scrim">#B308090B</color>
+    <color name="hairline">#1FFFFFFF</color>
+    <color name="hairline_strong">#33FFFFFF</color>
+
+    <!-- Text -->
+    <color name="text_primary">#FFF3F4F6</color>
+    <color name="text_secondary">#FFA2A8B0</color>
+    <color name="text_tertiary">#FF6C727A</color>
+    <color name="text_on_accent">#FF131016</color>
+
+    <!-- Accent: restrained lilac, inherited from the original identity. -->
+    <color name="accent">#FFCDBBFF</color>
+    <color name="accent_dim">#59CDBBFF</color>
+    <color name="accent_ghost">#1FCDBBFF</color>
+    <color name="accent_deep">#FF7C5CE6</color>
+
+    <!-- Semantic -->
+    <color name="record_red">#FFFF4D4F</color>
+    <color name="warn">#FFF2B457</color>
+    <color name="ok">#FF7FD48B</color>
+    <color name="clip">#FFFF5A5A</color>
+
+    <!-- Legacy aliases still referenced by older resources/usages. -->
+    <color name="camera_surface">#FF07080A</color>
+    <color name="detail_text">#FFA2A8B0</color>
+    <color name="bar_black">#F007080A</color>
+    <color name="panel_scrim_color">#E6101115</color>
+    <color name="violet_primary">@color/accent</color>
+    <color name="violet_active">@color/accent_deep</color>
+    <color name="violet_container">#33CDBBFF</color>
+    <color name="slider_halo">#44CDBBFF</color>
+    <color name="slider_inactive">#3DFFFFFF</color>
+    <color name="preset_button_bg">#14FFFFFF</color>
+    <color name="preset_button_stroke">#33FFFFFF</color>
+    <color name="control_button_bg">#1FFFFFFF</color>
+    <color name="shutter_bg">#FFF3F4F6</color>
+    <color name="shutter_text">#FF101115</color>
 </resources>

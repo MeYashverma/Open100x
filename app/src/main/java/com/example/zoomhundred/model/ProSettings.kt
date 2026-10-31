@@ -1,45 +1,68 @@
 package com.example.zoomhundred.model
 
 import android.content.Context
-import android.content.SharedPreferences
 import androidx.core.content.edit
 
 /**
- * All pro-mode settings, persisted in SharedPreferences.
- * Accessed and mutated from the main thread only.
+ * Live professional-camera state (exposure, focus, white balance, locks).
+ *
+ * This is deliberately separate from [AppSettings]: these values describe the
+ * *current shot* and are honoured by the capture request pipeline, while AppSettings
+ * describes how the app behaves. Persisted so a session survives a restart — except
+ * the locks, which always start released.
  */
 data class ProSettings(
-    // Manual exposure
+    // Exposure
     var manualMode: Boolean = false,
-    var isoIndex: Int = 0,          // index into ISO_VALUES
-    var shutterIndex: Int = 0,      // index into SHUTTER_VALUES
+    var isoIndex: Int = 3,
+    var shutterIndex: Int = 5,
+    var evIndex: Int = 4,                     // index into EV_VALUES, 4 == 0 EV
+    var exposureLocked: Boolean = false,
+    // Focus
+    var focusMode: FocusMode = FocusMode.AUTO,
+    var focusPosition: Float = 0f,            // 0 = infinity, 1 = closest focus
+    var focusLocked: Boolean = false,
     // White balance
     var wbMode: WbMode = WbMode.AUTO,
     var wbKelvin: Int = 5500,
-    // Overlays
+    var wbLocked: Boolean = false,
+    // Overlays (mirrored from AppSettings for engine convenience)
     var focusPeakingEnabled: Boolean = false,
     var histogramEnabled: Boolean = true,
-    var gridMode: GridMode = GridMode.NONE,
+    var gridMode: GridMode = GridMode.THIRDS,
     var hudEnabled: Boolean = true,
     // Anti-shake
-    var antiShakeEnabled: Boolean = false,
+    var antiShakeEnabled: Boolean = true,
     var antiShakeThreshold: Float = 0.05f,
     // Output
     var outputFormat: OutputFormat = OutputFormat.JPEG,
+    var rawEnabled: Boolean = false,
     var stripGpsExif: Boolean = false,
     var shutterSoundEnabled: Boolean = true,
-    var shutterSoundVolume: Int = 80,
-    var zoomPostProcessEnabled: Boolean = false,
+    var shutterSoundVolume: Int = 70,
+    var zoomPostProcessEnabled: Boolean = true,
     var zoomPostProcessStrength: Int = 55,
     // Zoom
     var zoomLocked: Boolean = false,
+    var stabilization: StabilizationMode = StabilizationMode.AUTO,
     // Night UI
     var nightUiEnabled: Boolean = false
 ) {
+
+    fun isoValue(): Int = ISO_VALUES[isoIndex.coerceIn(0, ISO_VALUES.lastIndex)]
+    fun shutterNanos(): Long = SHUTTER_VALUES[shutterIndex.coerceIn(0, SHUTTER_VALUES.lastIndex)]
+    fun evValue(): Float = EV_VALUES[evIndex.coerceIn(0, EV_VALUES.lastIndex)]
+
+    /** Manual values are only meaningful when the user has taken over exposure. */
+    fun exposureOverrideActive(): Boolean = manualMode && !exposureLocked
+
+    fun copyOf(): ProSettings = this.copy()
+
     companion object {
         val ISO_VALUES = intArrayOf(50, 100, 200, 400, 800, 1600, 3200, 6400, 12800)
-        /** Exposure times in nanoseconds */
+        /** Exposure times in nanoseconds, longest first. */
         val SHUTTER_VALUES = longArrayOf(
+            1_000_000_000L, // 1s
             500_000_000L,   // 1/2
             250_000_000L,   // 1/4
             125_000_000L,   // 1/8
@@ -50,37 +73,49 @@ data class ProSettings(
             4_000_000L,     // 1/250
             2_000_000L,     // 1/500
             1_000_000L,     // 1/1000
-            500_000L,       // 1/2000
-            250_000L        // 1/4000
+            500_000L        // 1/2000
         )
         val SHUTTER_LABELS = arrayOf(
-            "1/2","1/4","1/8","1/16","1/30","1/60",
-            "1/120","1/250","1/500","1/1000","1/2000","1/4000"
+            "1\"", "1/2", "1/4", "1/8", "1/16", "1/30", "1/60", "1/120", "1/250", "1/500", "1/1000", "1/2000"
         )
+        /** Third-stop exposure compensation. */
+        val EV_VALUES = floatArrayOf(-2f, -1.7f, -1.3f, -1f, 0f, 1f, 1.3f, 1.7f, 2f)
+
+        val KELVIN_MIN = 2000
+        val KELVIN_MAX = 9000
 
         private const val PREF_FILE = "pro_settings"
+
+        fun reset(context: Context) {
+            context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit().clear().apply()
+        }
 
         fun load(context: Context): ProSettings {
             val p = context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE)
             return ProSettings(
                 manualMode = p.getBoolean("manualMode", false),
-                isoIndex = p.getInt("isoIndex", 3),
-                shutterIndex = p.getInt("shutterIndex", 5),
-                wbMode = WbMode.entries[p.getInt("wbMode", 0)],
-                wbKelvin = p.getInt("wbKelvin", 5500),
+                isoIndex = p.getInt("isoIndex", 3).coerceIn(0, ISO_VALUES.lastIndex),
+                shutterIndex = p.getInt("shutterIndex", 6).coerceIn(0, SHUTTER_VALUES.lastIndex),
+                evIndex = p.getInt("evIndex", 4).coerceIn(0, EV_VALUES.lastIndex),
+                focusMode = p.getBoolean("manualFocus", false).let { if (it) FocusMode.MANUAL else FocusMode.AUTO },
+                focusPosition = p.getFloat("focusPosition", 0f).coerceIn(0f, 1f),
+                wbMode = WbMode.entries.getOrElse(p.getInt("wbMode", 0)) { WbMode.AUTO },
+                wbKelvin = p.getInt("wbKelvin", 5500).coerceIn(KELVIN_MIN, KELVIN_MAX),
                 focusPeakingEnabled = p.getBoolean("focusPeaking", false),
                 histogramEnabled = p.getBoolean("histogram", true),
-                gridMode = GridMode.entries[p.getInt("gridMode", 0)],
+                gridMode = GridMode.entries.getOrElse(p.getInt("gridMode", GridMode.THIRDS.ordinal)) { GridMode.THIRDS },
                 hudEnabled = p.getBoolean("hud", true),
-                antiShakeEnabled = p.getBoolean("antiShake", false),
+                antiShakeEnabled = p.getBoolean("antiShake", true),
                 antiShakeThreshold = p.getFloat("antiShakeThreshold", 0.05f),
-                outputFormat = OutputFormat.entries[p.getInt("outputFormat", 0)],
+                outputFormat = OutputFormat.entries.getOrElse(p.getInt("outputFormat", 0)) { OutputFormat.JPEG },
+                rawEnabled = p.getBoolean("raw", false),
                 stripGpsExif = p.getBoolean("stripGps", false),
                 shutterSoundEnabled = p.getBoolean("shutterSound", true),
-                shutterSoundVolume = p.getInt("shutterSoundVolume", 80).coerceIn(0, 100),
-                zoomPostProcessEnabled = p.getBoolean("zoomPostProcess", false),
+                shutterSoundVolume = p.getInt("shutterSoundVolume", 70).coerceIn(0, 100),
+                zoomPostProcessEnabled = p.getBoolean("zoomPostProcess", true),
                 zoomPostProcessStrength = p.getInt("zoomPostProcessStrength", 55).coerceIn(0, 100),
                 zoomLocked = false,
+                stabilization = StabilizationMode.entries.getOrElse(p.getInt("stabilization", 0)) { StabilizationMode.AUTO },
                 nightUiEnabled = p.getBoolean("nightUi", false)
             )
         }
@@ -89,10 +124,13 @@ data class ProSettings(
     fun save(context: Context) {
         context.getSharedPreferences(PREF_FILE, Context.MODE_PRIVATE).edit {
             putBoolean("manualMode", manualMode)
-            putInt("isoIndex", isoIndex)
-            putInt("shutterIndex", shutterIndex)
+            putInt("isoIndex", isoIndex.coerceIn(0, ISO_VALUES.lastIndex))
+            putInt("shutterIndex", shutterIndex.coerceIn(0, SHUTTER_VALUES.lastIndex))
+            putInt("evIndex", evIndex.coerceIn(0, EV_VALUES.lastIndex))
+            putBoolean("manualFocus", focusMode == FocusMode.MANUAL)
+            putFloat("focusPosition", focusPosition.coerceIn(0f, 1f))
             putInt("wbMode", wbMode.ordinal)
-            putInt("wbKelvin", wbKelvin)
+            putInt("wbKelvin", wbKelvin.coerceIn(KELVIN_MIN, KELVIN_MAX))
             putBoolean("focusPeaking", focusPeakingEnabled)
             putBoolean("histogram", histogramEnabled)
             putInt("gridMode", gridMode.ordinal)
@@ -100,16 +138,14 @@ data class ProSettings(
             putBoolean("antiShake", antiShakeEnabled)
             putFloat("antiShakeThreshold", antiShakeThreshold)
             putInt("outputFormat", outputFormat.ordinal)
+            putBoolean("raw", rawEnabled)
             putBoolean("stripGps", stripGpsExif)
             putBoolean("shutterSound", shutterSoundEnabled)
             putInt("shutterSoundVolume", shutterSoundVolume.coerceIn(0, 100))
             putBoolean("zoomPostProcess", zoomPostProcessEnabled)
             putInt("zoomPostProcessStrength", zoomPostProcessStrength.coerceIn(0, 100))
+            putInt("stabilization", stabilization.ordinal)
             putBoolean("nightUi", nightUiEnabled)
         }
     }
 }
-
-enum class WbMode { AUTO, DAYLIGHT, CLOUDY, SHADE, TUNGSTEN, FLUORESCENT, CUSTOM }
-enum class GridMode { NONE, THIRDS, SQUARE, DIAGONAL }
-enum class OutputFormat { JPEG, WEBP }

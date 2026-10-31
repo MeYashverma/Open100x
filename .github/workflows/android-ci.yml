@@ -2,7 +2,7 @@ name: Android CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    name: Build debug APK
+    name: Build, test and package
     runs-on: ubuntu-latest
 
     steps:
@@ -42,11 +42,37 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
 
-      - name: Upload debug APK
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Compile instrumentation tests
+        run: ./gradlew assembleDebugAndroidTest --stacktrace
+
+      - name: Assemble release APK (minified)
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Collect APKs
+        if: always()
+        run: |
+          mkdir -p artifacts
+          find app/build/outputs/apk -name "*.apk" -exec cp {} artifacts/ \; || true
+          ls -la artifacts || true
+
+      - name: Upload APKs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: open100x-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: open100x-apks
+          path: artifacts/*.apk
+          if-no-files-found: warn
+
+      - name: Upload unit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: open100x-unit-test-report
+          path: app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore

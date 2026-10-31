@@ -23,6 +23,11 @@ class HistogramView @JvmOverloads constructor(
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
+    /** True when highlights are clipping (>= 2% of sampled luma above 246). */
+    @Volatile
+    var clipping: Boolean = false
+        private set
+
     private val bins = IntArray(256)
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.argb(160, 255, 255, 255)
@@ -63,6 +68,7 @@ class HistogramView @JvmOverloads constructor(
             if (localBins[i] > 0) (ln(localBins[i].toFloat()) * 1000).toInt() else 0
         }
         val newMax = max(1, logBins.max())
+        clipping = localBins.copyOfRange(247, 256).sum() > (w * h) / 50
         synchronized(bins) {
             logBins.copyInto(bins)
             maxBin = newMax
@@ -89,6 +95,7 @@ class HistogramView @JvmOverloads constructor(
             if (localBins[i] > 0) (ln(localBins[i].toFloat()) * 1000).toInt() else 0
         }
         val newMax = max(1, logBins.max())
+        clipping = localBins.copyOfRange(247, 256).sum() > (width * height) / 50
         synchronized(bins) {
             logBins.copyInto(bins)
             maxBin = newMax
