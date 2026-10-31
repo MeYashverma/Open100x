@@ -1,107 +1,103 @@
 package com.example.zoomhundred
 
 import android.Manifest
-import android.media.AudioManager
-import android.content.ContentValues
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CameraMetadata
-import android.hardware.camera2.CameraManager
-import android.hardware.camera2.CaptureRequest
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.media.AudioManager
 import android.media.ToneGenerator
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Size
-import android.view.KeyEvent
+import android.view.GestureDetector
 import android.view.HapticFeedbackConstants
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.OrientationEventListener
+import android.view.ScaleGestureDetector
 import android.view.Surface
 import android.view.View
 import android.view.ViewConfiguration
-import android.provider.MediaStore
-import android.widget.LinearLayout
+import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.camera2.interop.Camera2CameraControl
-import androidx.camera.camera2.interop.Camera2CameraInfo
-import androidx.camera.camera2.interop.CaptureRequestOptions
-import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.Preview
-import androidx.camera.core.resolutionselector.AspectRatioStrategy
-import androidx.camera.core.resolutionselector.ResolutionSelector
-import androidx.camera.core.resolutionselector.ResolutionStrategy
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.exifinterface.media.ExifInterface
 import com.example.zoomhundred.camera.AntiShakeController
-import com.example.zoomhundred.camera.CameraCapabilities
-import com.example.zoomhundred.camera.ProCameraController
-import com.example.zoomhundred.camera.ZoomAnimator
+import com.example.zoomhundred.camera.CameraEngine
+import com.example.zoomhundred.camera.CaptureCoordinator
+import com.example.zoomhundred.camera.DeviceCapabilities
+import com.example.zoomhundred.camera.FeatureGate
+import com.example.zoomhundred.camera.FeatureState
+import com.example.zoomhundred.camera.LensCapabilities
+import com.example.zoomhundred.camera.LumaFrame
+import com.example.zoomhundred.camera.ShotContext
+import com.example.zoomhundred.camera.SphereCaptureController
+import com.example.zoomhundred.camera.VideoConfig
+import com.example.zoomhundred.camera.ZoomEngine
+import com.example.zoomhundred.computational.AccumulationMode
 import com.example.zoomhundred.databinding.ActivityMainBinding
-import com.example.zoomhundred.imaging.ExifUtils
-import com.example.zoomhundred.imaging.ExtremeZoomPostProcessor
+import com.example.zoomhundred.diagnostics.CrashGuard
+import com.example.zoomhundred.imaging.ImageStore
+import com.example.zoomhundred.model.AppSettings
+import com.example.zoomhundred.model.AspectRatio
+import com.example.zoomhundred.model.CaptureMode
+import com.example.zoomhundred.model.FlashMode
+import com.example.zoomhundred.model.FrameStyle
 import com.example.zoomhundred.model.GridMode
-import com.example.zoomhundred.model.OutputFormat
+import com.example.zoomhundred.model.PhotoFormat
 import com.example.zoomhundred.model.ProSettings
+import com.example.zoomhundred.model.StabilizationMode
+import com.example.zoomhundred.model.VideoResolution
 import com.example.zoomhundred.model.ZoomPreset
-import com.example.zoomhundred.model.ZoomPresets
-import com.example.zoomhundred.ui.ProSettingsSheet
-import com.google.android.material.button.MaterialButton
-import java.util.concurrent.ExecutorService
+import com.example.zoomhundred.overlay.CaptureButtonView
+import com.example.zoomhundred.overlay.HudState
+import com.example.zoomhundred.ui.ProPanelSheet
+import com.example.zoomhundred.ui.ToolsSheet
+import com.example.zoomhundred.video.VideoRecorderController
+import java.io.File
 import java.util.concurrent.Executors
 import kotlin.math.abs
-import kotlin.math.atan
+import kotlin.math.atan2
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.PI
-import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-private const val HISTOGRAM_FRAME_INTERVAL_MS = 100L
-private const val HEAT_HAZE_FRAME_INTERVAL_MS = 120L
-private const val SCOPE_FRAME_INTERVAL_MS = 220L
-private const val ZOOM_EPSILON = 0.01f
-private const val EXTREME_CAPTURE_ZOOM = 15f
-private const val POST_PROCESS_MIN_ZOOM = 30f
-private const val SETTLED_CAPTURE_MIN_DELAY_MS = 320L
-private const val SETTLED_CAPTURE_TIMEOUT_MS = 2600L
-private const val GESTURE_PREFS = "gesture_prefs"
-private const val GESTURE_ONBOARDING_SHOWN = "gesture_onboarding_shown"
-private const val DOUBLE_TAP_TIMEOUT_MS = 280L
+private const val TAG = "MainActivity"
+private const val HISTOGRAM_INTERVAL_MS = 120L
+private const val LOUPE_INTERVAL_MS = 110L
+private const val MONITOR_INTERVAL_MS = 140L
+private const val SCOPE_INTERVAL_MS = 260L
+private const val SETTLED_MIN_DELAY_MS = 320L
+private const val SETTLED_TIMEOUT_MS = 2600L
+private const val EXTREME_ZOOM_THRESHOLD = 15f
+private const val RECORD_TICK_MS = 500L
+private const val FIRST_FRAME_TIMEOUT_MS = 5000L
 
-private enum class CameraGestureMode {
-    NONE,
-    RIGHT_EDGE_ZOOM,
-    RIGHT_EDGE_LENS,
-    BOTTOM_RAIL,
-    BOTTOM_DRAWER,
-    TOP_HUD,
-    LEFT_FLASH,
-    LEFT_INFO,
-    CORNER_HEAT,
-    CORNER_BRACKET,
-    PREVIEW_PAN
+/** One-line, bounded description of a throwable for on-screen messages. */
+internal fun Throwable.shortMessage(): String {
+    val text = message?.trim().orEmpty()
+    val type = javaClass.simpleName
+    if (text.isEmpty()) return type
+    return "$type: " + text.take(120)
 }
 
 fun isGooglePixelDevice(): Boolean {
@@ -115,377 +111,1783 @@ fun isGooglePixelDevice(): Boolean {
     return googleHardware && pixelName
 }
 
-class MainActivity : AppCompatActivity() {
+/**
+ * The camera screen.
+ *
+ * Deliberately thin: it owns UI state, gestures and lifecycle, and delegates hardware to
+ * [CameraEngine], capture sequences to [CaptureCoordinator], recording to
+ * [VideoRecorderController] and every value shown to the user to the capability layer.
+ * Anything the device cannot do is either absent or explicitly labelled.
+ */
+class MainActivity : AppCompatActivity(),
+    CameraEngine.Callback,
+    CaptureCoordinator.Listener,
+    VideoRecorderController.Listener {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var cameraExecutor: ExecutorService
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private val pixelPortraitOnly = isGooglePixelDevice()
-    private lateinit var orientationListener: OrientationEventListener
-    private lateinit var sensorManager: SensorManager
-    private var gyroSensor: Sensor? = null
-
-    private var camera: Camera? = null
-    private var preview: Preview? = null
-    private var imageCapture: ImageCapture? = null
-    private var imageAnalysis: ImageAnalysis? = null
-    private var cameraProvider: ProcessCameraProvider? = null
-    private var lensOptions: List<LensOption> = emptyList()
-    private var currentLensIndex: Int = 0
-
-    private var requestedZoom = 1f
-    private var nativeZoomCap = 1f
-    private var minNativeZoom = 1f
-    private var lastAppliedNativeZoom = 1f
-    private var pendingNativeZoom: Float? = null
-    private var nativeZoomInFlight = false
-    private var torchEnabled = false
-    private var currentDigitalFactor = 1f
-    private var digitalCropOffsetX = 0f
-    private var digitalCropOffsetY = 0f
-    private var baseHorizontalFovDeg = 0f
-    private var baseVerticalFovDeg = 0f
-    private val zoomAnimator = ZoomAnimator()
-
-    private lateinit var proSettings: ProSettings
-    private var capabilities = CameraCapabilities()
+    private lateinit var engine: CameraEngine
+    private lateinit var coordinator: CaptureCoordinator
+    private lateinit var recorderController: VideoRecorderController
     private lateinit var antiShake: AntiShakeController
-    private var antiShakeArmed = false
-    @Volatile private var histogramEnabledForAnalyzer = true
-    @Volatile private var heatHazeEnabled = false
-    private var lastHistogramUpdateMs = 0L
-    private var lastHeatHazeUpdateMs = 0L
-    private var lastScopeFrameUpdateMs = 0L
-    private var latestScopeBitmap: Bitmap? = null
-    private val scopeBitmapLock = Any()
-    private var freezeScopeActive = false
-    private var displayedFreezeBitmap: Bitmap? = null
-    private var gyroMagnitude = 0f
+    private lateinit var settings: AppSettings
+    private lateinit var pro: ProSettings
+    private var orientationListener: OrientationEventListener? = null
+    private lateinit var sensorManager: SensorManager
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** True once the launch path completed; every lifecycle hook checks it. */
+    private var uiReady = false
+
+    /** One explanatory dialog per screen; later errors stay in the status line. */
+    private var cameraErrorDialogShown = false
+
+    /** Zoom capsule chips, rebuilt whenever the lens (and therefore the stops) changes. */
+    private var zoomChips: List<Pair<Float, TextView>> = emptyList()
+
+    /** Non-null while a guided photo-sphere sweep is running. */
+    private var sphereSession: SphereCaptureController? = null
+
+    /** Set by the first analysis frame; the watchdog reports a silently frozen session. */
+    @Volatile
+    private var firstFrameSeen = false
+
+    private val hintDismiss = object : Runnable {
+        override fun run() {
+            if (uiReady && !::binding.isInitialized) return
+            if (!coordinator.isBusy && !recordingActive) {
+                binding.captureStatusText.visibility = View.GONE
+            }
+        }
+    }
+
+    private val firstFrameWatchdog = object : Runnable {
+        override fun run() {
+            if (uiReady && !firstFrameSeen) {
+                showCameraError("camera opened but delivered no frames within 5 s")
+            }
+        }
+    }
+    private val ioExecutor = Executors.newSingleThreadExecutor()
+    private val pixelPortraitOnly = isGooglePixelDevice()
+
+    private var capabilities = DeviceCapabilities()
+    private var currentLens: LensCapabilities? = null
+    private var usingFrontCamera = false
+
+    private var mode: CaptureMode = CaptureMode.PHOTO
+    private var zoom = 1f
+    private var cropOffsetX = 0f
+    private var cropOffsetY = 0f
+    private var zoomEngine = ZoomEngine()
+    private var rawBound = false
+
+    private var lastHistogramMs = 0L
+    private var lastLoupeMs = 0L
+    private var lastMonitorMs = 0L
+    private var lastScopeMs = 0L
+    private var monitorMode = 0 // 0 none, 1 histogram, 2 peaking, 3 zebra
+
     private var stableSinceMs = 0L
-    private var lastGyroTimestampNs = 0L
-    private var aimDriftXRad = 0f
-    private var aimDriftYRad = 0f
-    private var lastOverlaySensorUpdateMs = 0L
+    private var shakeLevel = 0f
     private var settledCapturePending = false
-    private var settledCaptureStartedMs = 0L
-    private val settledCaptureRunnable = object : Runnable {
+    private var settledStartedMs = 0L
+
+    private var countdownRemaining = 0
+    private var countdownToken = 0
+    private var pendingRawJpegSecondPass = false
+
+    private var recordingActive = false
+    private var recordingPaused = false
+    private var lastScopeBitmap: Bitmap? = null
+    private var rollDegrees = 0f
+    private var pitchDegrees = 0f
+
+    private val scaleDetector by lazy { ScaleGestureDetector(this, PinchListener()) }
+    private val gestureDetector by lazy {
+        GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                animateZoom(if (zoom > 1.5f) 1f else min(5f, zoomEngine.maxZoom))
+                haptic(HapticFeedbackConstants.VIRTUAL_KEY)
+                return true
+            }
+
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                focusAt(e.x, e.y)
+                return true
+            }
+
+            override fun onLongPress(e: MotionEvent) {
+                toggleFreezeScope()
+            }
+        })
+    }
+
+    private val settledRunnable = object : Runnable {
         override fun run() {
             updateSettledCapture()
         }
     }
-    private val zoomRailStops = floatArrayOf(1f, 8f, 25f, 50f, 100f)
-    private val mainZoomStops = listOf(
-        ZoomPreset("1x", 1f),
-        ZoomPreset("10x", 10f),
-        ZoomPreset("30x", 30f),
-        ZoomPreset("100.0x", 100f)
-    )
-    private var railIndex = 0
-    private var focusSweepRunning = false
-    private var zoomPresets: MutableList<ZoomPreset> = mutableListOf()
-    private val presetButtons: MutableList<MaterialButton> = mutableListOf()
-    private var toolsDrawerOpen = false
-    private var gestureMode = CameraGestureMode.NONE
-    private var gestureDownX = 0f
-    private var gestureDownY = 0f
-    private var gestureStartZoom = 1f
-    private var gestureDownTimeMs = 0L
-    private var maxGesturePointerCount = 0
-    private var freezeGestureActive = false
-    private var previewLongPressArmed = false
-    private var lastPreviewTapMs = 0L
-    private val previewLongPressRunnable = Runnable {
-        if (previewLongPressArmed && gestureMode == CameraGestureMode.NONE && maxGesturePointerCount <= 1) {
-            freezeGestureActive = true
-            haptic(HapticFeedbackConstants.LONG_PRESS)
-            showFreezeScope()
+    private val recordTickRunnable = object : Runnable {
+        override fun run() {
+            if (recordingActive) {
+                binding.recordTimerText.text = formatDuration(recorderController.elapsedMs())
+                updateStorageEstimate()
+                mainHandler.postDelayed(this, RECORD_TICK_MS)
+            }
         }
-    }
-    private var shutterDownX = 0f
-    private var shutterDownY = 0f
-    private var shutterLongPressFired = false
-    private var drawerDownX = 0f
-    private var drawerDownY = 0f
-    private var zoomWheelDownX = 0f
-    private var zoomWheelDownY = 0f
-    private var zoomWheelStartZoom = 1f
-    private var zoomWheelLongPressed = false
-    private var zoomWheelMoved = false
-    private var topPanelBaseHeight = 0
-    private var topPanelBasePaddingTop = 0
-    private var lastTargetRotation = Int.MIN_VALUE
-    private var rotationUpdateQueued = false
-    private val shutterLongPressRunnable = Runnable {
-        shutterLongPressFired = true
-        haptic(HapticFeedbackConstants.LONG_PRESS)
-        if (requestedZoom >= EXTREME_CAPTURE_ZOOM && !settledCapturePending) {
-            beginSettledCapture()
-        } else {
-            onCaptureClicked()
-        }
-    }
-    private val zoomWheelLongPressRunnable = Runnable {
-        zoomWheelLongPressed = true
-        haptic(HapticFeedbackConstants.LONG_PRESS)
-        setToolsDrawerOpen(open = true, animate = true)
     }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) startCamera()
-        else { Toast.makeText(this, R.string.permission_required, Toast.LENGTH_LONG).show(); finish() }
+        if (granted) startEngine()
+        else {
+            Toast.makeText(this, R.string.permission_required, Toast.LENGTH_LONG).show()
+            finish()
+        }
+    }
+
+    private val audioPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        startRecordingInternal(withAudio = granted)
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        if (pixelPortraitOnly) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
+        if (pixelPortraitOnly) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        cameraExecutor = Executors.newSingleThreadExecutor()
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        gyroSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
-        orientationListener = createOrientationListener()
-        proSettings = ProSettings.load(this)
-        antiShake = AntiShakeController(this)
-        zoomPresets = ZoomPresets.load(this)
-        setupUi()
-        applySettingsToUi()
-        ensurePermissionAndStart()
+
+        // Launch is split into guarded phases. A camera app must never show a
+        // "keeps stopping" dialog: anything that fails is reported on screen with a
+        // copyable trace and a retry, and the rest of the UI keeps working.
+        try {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            binding = ActivityMainBinding.inflate(layoutInflater)
+            setContentView(binding.root)
+        } catch (error: Throwable) {
+            CrashGuard.record(this, "inflate", error)
+            showStartupFailure(error)
+            return
+        }
+
+        try {
+            settings = AppSettings.load(this)
+            pro = ProSettings.load(this)
+            mode = settings.defaultMode
+            monitorMode = when {
+                settings.peakingEnabled -> 2
+                settings.zebraEnabled -> 3
+                settings.histogramEnabled -> 1
+                else -> 0
+            }
+            if (settings.keepScreenOn) {
+                window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            antiShake = AntiShakeController(this)
+            recorderController = VideoRecorderController(this).apply { listener = this@MainActivity }
+
+            engine = CameraEngine(this, this).apply { callback = this@MainActivity }
+            coordinator = CaptureCoordinator(
+                context = this,
+                engine = engine,
+                settings = { settings },
+                pro = { pro }
+            ).apply { listener = this@MainActivity }
+
+            setupUi()
+            setupInsets()
+            setupSensors()
+        } catch (error: Throwable) {
+            CrashGuard.record(this, "startup", error)
+            showStartupFailure(error)
+            return
+        }
+
+        uiReady = true
+        try {
+            ensurePermissionAndStart()
+        } catch (error: Throwable) {
+            CrashGuard.record(this, "camera start", error)
+            showCameraUnavailable(error.shortMessage())
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        if (!pixelPortraitOnly && orientationListener.canDetectOrientation()) orientationListener.enable()
-        registerExtremeSensors()
-        if (!pixelPortraitOnly) updateUseCaseRotations()
-        if (proSettings.antiShakeEnabled) startAntiShake()
+        if (!uiReady) return
+        val previous = settings
+        settings = AppSettings.load(this)
+        applySettingsToUi()
+        if (previous.photoFormat != settings.photoFormat ||
+            previous.flashMode != settings.flashMode ||
+            previous.videoResolution != settings.videoResolution ||
+            previous.videoFps != settings.videoFps ||
+            previous.videoStabilization != settings.videoStabilization
+        ) {
+            if (engine.isBound) bindCamera()
+        }
+        if (antiShake.isAvailable) startAntiShake()
+        if (!pixelPortraitOnly) {
+            orientationListener?.takeIf { it.canDetectOrientation() }?.enable()
+        }
+        refreshThumbnail()
+        // The focus callback that normally refreshes these arrived before inflation and
+        // was ignored; refresh once the layout has real dimensions.
+        binding.previewView.post {
+            runCatching {
+                if (!isFinishing && !isDestroyed) {
+                    updateAspectGuide()
+                    updateLoupeSource()
+                }
+            }
+        }
     }
 
     override fun onPause() {
+        if (uiReady && sphereSession != null) cancelSphereSession()
+        if (!uiReady) {
+            super.onPause()
+            return
+        }
+        cancelCountdown()
         cancelSettledCapture()
+        if (recordingActive) stopRecording()
         antiShake.stop()
-        unregisterExtremeSensors()
-        if (!pixelPortraitOnly) orientationListener.disable()
-        proSettings.save(this)
+        orientationListener?.disable()
+        settings.save(this)
+        pro.save(this)
         super.onPause()
     }
 
     override fun onDestroy() {
+        sphereSession?.cancel()
+        sphereSession = null
+        if (!uiReady) {
+            super.onDestroy()
+            return
+        }
+        coordinator.release()
+        engine.shutdown()
+        recorderController.release()
+        ioExecutor.shutdown()
+        antiShake.stop()
+        mainHandler.removeCallbacksAndMessages(null)
+        lastScopeBitmap?.recycle()
+        lastScopeBitmap = null
         super.onDestroy()
-        cameraProvider?.unbindAll()
-        if (!pixelPortraitOnly) orientationListener.disable()
-        cameraExecutor.shutdown()
-        zoomAnimator.cancel()
-        mainHandler.removeCallbacks(settledCaptureRunnable)
-        synchronized(scopeBitmapLock) {
-            latestScopeBitmap?.recycle()
-            latestScopeBitmap = null
-        }
-        displayedFreezeBitmap?.recycle()
-        displayedFreezeBitmap = null
     }
 
-    // ── Volume key zoom nudge ─────────────────────────────────────────────────
-
-    private val extremeSensorListener = object : SensorEventListener {
-        override fun onSensorChanged(event: SensorEvent) {
-            if (event.sensor.type != Sensor.TYPE_GYROSCOPE) return
-            val nowMs = SystemClock.uptimeMillis()
-            if (lastGyroTimestampNs != 0L) {
-                val dt = (event.timestamp - lastGyroTimestampNs) / 1_000_000_000f
-                if (dt in 0f..0.08f) {
-                    aimDriftXRad += -event.values[1] * dt
-                    aimDriftYRad += event.values[0] * dt
-                }
-            }
-            lastGyroTimestampNs = event.timestamp
-
-            gyroMagnitude = sqrt(
-                event.values[0] * event.values[0] +
-                    event.values[1] * event.values[1] +
-                    event.values[2] * event.values[2]
-            )
-
-            if (gyroMagnitude < stabilityThreshold()) {
-                if (stableSinceMs == 0L) stableSinceMs = nowMs
-            } else {
-                stableSinceMs = 0L
-            }
-
-            if (nowMs - lastOverlaySensorUpdateMs >= 16L) {
-                lastOverlaySensorUpdateMs = nowMs
-                updateExtremeOverlay()
-                updateCaptureStabilityUi()
-            }
-        }
-
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
-    }
-
-    private fun registerExtremeSensors() {
-        lastGyroTimestampNs = 0L
-        gyroSensor?.let { sensorManager.registerListener(extremeSensorListener, it, SensorManager.SENSOR_DELAY_GAME) }
-    }
-
-    private fun unregisterExtremeSensors() {
-        sensorManager.unregisterListener(extremeSensorListener)
-        lastGyroTimestampNs = 0L
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!uiReady) return
+        if (!pixelPortraitOnly) engine.updateRotation(displayRotation())
+        updateAspectGuide()
+        updateLoupeSource()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (proSettings.zoomLocked) return super.onKeyDown(keyCode, event)
+        if (!uiReady) return super.onKeyDown(keyCode, event)
         return when (keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP   -> { nudgeZoom(+0.5f); true }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> { nudgeZoom(-0.5f); true }
+            KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                val direction = if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) 1 else -1
+                when (settings.volumeKeyAction) {
+                    com.example.zoomhundred.model.VolumeKeyAction.ZOOM -> {
+                        if (!settings.zoomLocked) nudgeZoom(direction)
+                        true
+                    }
+                    com.example.zoomhundred.model.VolumeKeyAction.SHUTTER -> {
+                        onShutterPressed()
+                        true
+                    }
+                    com.example.zoomhundred.model.VolumeKeyAction.OFF -> super.onKeyDown(keyCode, event)
+                }
+            }
             else -> super.onKeyDown(keyCode, event)
         }
     }
 
-    private fun nudgeZoom(delta: Float) {
-        animateZoomTo((requestedZoom + delta).coerceIn(1f, 100f))
-    }
-
-    // ── UI setup ──────────────────────────────────────────────────────────────
+    // ── Setup ─────────────────────────────────────────────────────────────────
 
     private fun setupUi() {
-        binding.zoomSlider.addOnChangeListener { _, value, fromUser ->
-            if (fromUser && !proSettings.zoomLocked) {
-                zoomAnimator.cancel()
-                setZoomImmediately(value, syncSlider = false)
-            }
-        }
-        binding.resetZoomButton.setOnClickListener   { openAppInfo() }
-        binding.switchLensButton.setOnClickListener  { switchLens() }
-        binding.switchLensButton.setOnLongClickListener {
-            switchToFrontCamera()
+        buildModeStrip()
+
+        binding.captureButton.onTap = { onShutterPressed() }
+        binding.captureButton.onLongPress = { onShutterLongPressed() }
+        binding.switchCameraButton.setOnClickListener { switchCamera() }
+        binding.pauseButton.setOnClickListener { toggleRecordingPause() }
+        binding.thumbnailView.setOnClickListener { openGallery() }
+        binding.settingsButton.setOnClickListener { openSettings() }
+        binding.toolsButton.setOnClickListener { openToolsSheet() }
+        binding.flashButton.setOnClickListener { cycleFlash() }
+        binding.timerButton.setOnClickListener { cycleTimer() }
+        binding.hdrButton.setOnClickListener { toggleHdr() }
+        binding.gridButton.setOnClickListener { cycleGrid() }
+        binding.loupeToggleButton.setOnClickListener { toggleLoupe() }
+        binding.monitorButton.setOnClickListener { cycleMonitoring() }
+        binding.zoomLockButton.setOnClickListener { toggleZoomLock() }
+
+        binding.proSettingsButton.setOnClickListener { openProPanel() }
+        binding.switchLensButton.setOnClickListener { switchLens() }
+        binding.lensBadgeText.setOnClickListener { switchLens() }
+        binding.resetZoomButton.setOnClickListener { animateZoom(1f) }
+        binding.lockZoomButton.setOnClickListener { toggleZoomLock() }
+        binding.flashlightButton.setOnClickListener { toggleTorch() }
+        binding.zoomValueText.setOnLongClickListener {
+            setDrawerOpen(!drawerOpen)
             true
         }
-        binding.captureButton.setOnTouchListener { _, event -> handleShutterTouch(event) }
-        binding.lockZoomButton.setOnClickListener    { toggleZoomLock() }
-        binding.flashlightButton.setOnClickListener  { toggleFlashlight() }
-        binding.proSettingsButton.setOnClickListener { openProSettings() }
-        binding.gridButton.setOnClickListener        { cycleGrid() }
-        binding.gestureLayer.setOnTouchListener { _, event -> handleCameraGesture(event) }
-        binding.gestureHintButton.setOnClickListener { showGestureHints(force = true) }
-        binding.bottomPanel.setOnTouchListener { _, event -> handleDrawerTouch(event) }
-        binding.zoomValueText.setOnTouchListener { _, event -> handleZoomWheelTouch(event) }
-        setupSystemInsets()
-        buildPresetBar()
-        bringControlUiToFront()
-        setToolsDrawerOpen(open = false, animate = false)
-        showGestureHints(force = false)
-    }
-
-    private fun bringControlUiToFront() {
-        binding.sidePanel?.bringToFront()
-        binding.topPanel.bringToFront()
-        binding.bottomPanel.bringToFront()
-        if (isPortraitUi()) {
-            binding.bottomControlsBar?.bringToFront()
-            binding.bottomPanel.bringToFront()
+        binding.zoomValueText.setOnClickListener { setDrawerOpen(!drawerOpen) }
+        binding.zoomSlider.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) setZoom(zoomEngine.sliderToZoom(value), userInitiated = true)
         }
+
+        binding.zoomPresetRow.setOnClickListener { setDrawerOpen(!drawerOpen) }
+        binding.zoomPresetRow.setOnLongClickListener {
+            binding.switchLensButton.performClick()
+            true
+        }
+        binding.zoomRail.onPresetSelected = { preset -> animateZoom(preset.ratio) }
+        binding.zoomRail.onZoomScrubbed = { value -> setZoom(value, userInitiated = true) }
+        binding.zoomRail.onZoomCommit = { value -> animateZoom(value) }
+
+        binding.loupeView.onMoved = { fx, fy ->
+            settings.loupeX = fx
+            settings.loupeY = fy
+            updateLoupeSource()
+        }
+        binding.loupeView.onTapped = { toggleLoupe() }
+
+        binding.gestureLayer.setOnTouchListener { _, event -> handleGesture(event) }
+        binding.bottomPanel.setOnTouchListener { _, event -> handleDrawerTouch(event) }
+
+        binding.freezeScopeView.setOnClickListener { toggleFreezeScope() }
+        binding.gestureHintOverlay.setOnClickListener { binding.gestureHintOverlay.visibility = View.GONE }
+
+        applySettingsToUi()
+        showOnboardingIfNeeded()
     }
 
-    private fun setupSystemInsets() {
-        topPanelBaseHeight = binding.topPanel.layoutParams.height
-        topPanelBasePaddingTop = binding.topPanel.paddingTop
-        val basePaddingLeft = binding.topPanel.paddingLeft
-        val basePaddingRight = binding.topPanel.paddingRight
-        val basePaddingBottom = binding.topPanel.paddingBottom
+    private fun setupInsets() {
+        val topBase = binding.topPanel.paddingTop
+        val bottomBase = binding.bottomControlsBar.paddingBottom
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
-            val statusTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-            val portrait = isPortraitUi()
-            val extraTop = if (portrait) statusTop else 0
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             binding.topPanel.setPadding(
-                basePaddingLeft,
-                topPanelBasePaddingTop + extraTop,
-                basePaddingRight,
-                basePaddingBottom
+                binding.topPanel.paddingLeft, topBase + bars.top,
+                binding.topPanel.paddingRight, binding.topPanel.paddingBottom
             )
-            if (topPanelBaseHeight > 0) {
-                binding.topPanel.layoutParams = binding.topPanel.layoutParams.apply {
-                    height = topPanelBaseHeight + extraTop
-                }
-            }
+            binding.bottomControlsBar.setPadding(
+                binding.bottomControlsBar.paddingLeft, binding.bottomControlsBar.paddingTop,
+                binding.bottomControlsBar.paddingRight, bottomBase + bars.bottom
+            )
             insets
         }
     }
 
-    private fun handleZoomWheelTouch(event: MotionEvent): Boolean {
-        val slop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
+    private fun setupSensors() {
+        orientationListener = object : OrientationEventListener(this) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (pixelPortraitOnly || orientation == ORIENTATION_UNKNOWN) return
+                if (engine.isBound) engine.updateRotation(displayRotation())
+            }
+        }
+        // Level + rotation used by the horizon indicator.
+        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let { accelerometer ->
+            sensorManager.registerListener(object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent) {
+                    val x = event.values[0]
+                    val y = event.values[1]
+                    val z = event.values[2]
+                    rollDegrees = Math.toDegrees(atan2(x.toDouble(), y.toDouble())).toFloat()
+                    pitchDegrees = Math.toDegrees(atan2(-z.toDouble(), sqrt((x * x + y * y).toDouble()))).toFloat()
+                    if (binding.levelView.visibility == View.VISIBLE) {
+                        binding.levelView.rollDegrees = rollDegrees
+                        binding.levelView.pitchDegrees = pitchDegrees
+                    }
+                }
+
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+            }, accelerometer, SensorManager.SENSOR_DELAY_UI)
+        }
+    }
+
+    private fun ensurePermissionAndStart() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            startEngine()
+        } else {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun startEngine() {
+        binding.captureStatusText.visibility = View.VISIBLE
+        binding.captureStatusText.text = getString(R.string.loading_camera)
+        engine.initialize { ready ->
+            if (isFinishing || isDestroyed) return@initialize
+            try {
+                if (!ready) {
+                    showCameraUnavailable("camera provider unavailable")
+                    return@initialize
+                }
+                capabilities = engine.capabilities
+                if (capabilities.lenses.isEmpty()) {
+                    // Never finish() here: an empty list can also mean a transient HAL
+                    // failure, and closing the app looks exactly like a crash.
+                    showCameraUnavailable("no camera reported by the system")
+                    return@initialize
+                }
+                currentLens = pickDefaultLens()
+                bindCamera()
+            } catch (error: Throwable) {
+                CrashGuard.record(this, "camera start", error)
+                showCameraUnavailable(error.shortMessage())
+            }
+        }
+    }
+
+    /** Keeps the app open and explains what the hardware/OS refused to do. */
+    private fun showCameraUnavailable(reason: String) {
+        if (!::binding.isInitialized) return
+        binding.captureStatusText.visibility = View.VISIBLE
+        binding.captureStatusText.text = getString(R.string.no_camera_found) + " Tap to retry"
+        binding.captureStatusText.isClickable = true
+        binding.captureStatusText.setOnClickListener { recreate() }
+        toast(reason)
+        runCatching {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.no_camera_found))
+                .setMessage(reason + "\n\n" + getString(R.string.camera_unavailable_hint))
+                .setPositiveButton(getString(R.string.retry)) { _, _ -> recreate() }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }.onFailure { android.util.Log.w(TAG, "camera-unavailable dialog failed", it) }
+    }
+
+    private fun pickDefaultLens(): LensCapabilities? {
+        val back = capabilities.backLenses
+        if (back.isEmpty()) return capabilities.lenses.firstOrNull()
+        // Prefer the telephoto module: the 100× hybrid engine is the point of this app.
+        return back.maxByOrNull { it.focalLengthsMm.maxOrNull() ?: 0f } ?: back.first()
+    }
+
+    private fun bindCamera(forceRaw: Boolean = false) {
+        val lens = currentLens ?: return
+        val surfaceProvider = binding.previewView.surfaceProvider ?: return
+        rawBound = forceRaw
+        val video = videoConfig()
+        val ok = engine.bind(
+            lens = lens,
+            mode = mode,
+            surfaceProvider = surfaceProvider,
+            pro = pro,
+            settings = settings,
+            rotation = displayRotation(),
+            video = video,
+            forceRaw = forceRaw
+        )
+        if (!ok) {
+            showCameraError(
+                engine.lastBindDiagnostic.ifBlank { "session rejected by the camera HAL" }
+            )
+            return
+        }
+        try {
+            bindSessionUi(lens)
+        } catch (error: Throwable) {
+            // The preview is already live; a UI-side failure must not take the app down.
+            CrashGuard.record(this, "bind session", error)
+            toast(getString(R.string.bind_failed, error.shortMessage()))
+        }
+    }
+
+    private fun bindSessionUi(lens: LensCapabilities) {
+        minZoom = engine.minZoom
+        maxZoom = min(100f, max(engine.maxZoom, lens.maxZoomRatio))
+        zoomEngine = ZoomEngine(minZoom, engine.maxZoom, maxZoom)
+        refreshZoomPresets()
+        setZoom(zoom, userInitiated = false)
+        binding.lensBadgeText.text = lensLabel(lens)
+        binding.proModeBadge.visibility = if (pro.manualMode || mode == CaptureMode.PRO) View.VISIBLE else View.GONE
+        applySessionSettings()
+        // "Bound but black" is a real failure: if the analysis stream never delivers a
+        // frame, say so instead of leaving an empty viewfinder.
+        firstFrameSeen = false
+        mainHandler.removeCallbacks(firstFrameWatchdog)
+        if (engine.usingAnalysis) mainHandler.postDelayed(firstFrameWatchdog, FIRST_FRAME_TIMEOUT_MS)
+        binding.captureStatusText.visibility = View.GONE
+        refreshThumbnail()
+        updateAspectGuide()
+        binding.loupeView.zoomRatio = zoom
+        if (settings.showLoupe) restoreLoupePosition()
+    }
+
+    private fun applySessionSettings() {
+        val lens = currentLens ?: return
+        engine.applySessionOptions(pro, lens, displayRotation(), videoConfig())
+        engine.setExposureCompensation(pro.evValue())
+        startAntiShakeIfNeeded()
+    }
+
+    private fun videoConfig(): VideoConfig {
+        val lens = currentLens
+        var resolution = settings.videoResolution
+        var fps = settings.videoFps
+        if (lens != null) {
+            if (!lens.supportsVideo(resolution, fps)) {
+                // Fall back to the closest combination this lens/encoder can actually do.
+                resolution = when {
+                    lens.supportsVideo(VideoResolution.FHD, 30) -> VideoResolution.FHD
+                    lens.supportsVideo(VideoResolution.HD, 30) -> VideoResolution.HD
+                    else -> resolution
+                }
+                if (!lens.supportsVideo(resolution, fps)) fps = 30
+            }
+        }
+        return VideoConfig(
+            resolution = resolution,
+            fps = fps,
+            codec = settings.videoCodec,
+            bitrateMbps = settings.videoBitrateMbps,
+            stabilization = settings.videoStabilization,
+            recordAudio = settings.recordAudio
+        )
+    }
+
+    // ── Camera engine callbacks ───────────────────────────────────────────────
+
+    override fun onAnalysisFrame(frame: LumaFrame) {
+        if (!firstFrameSeen) {
+            firstFrameSeen = true
+            mainHandler.removeCallbacks(firstFrameWatchdog)
+        }
+        val now = SystemClock.uptimeMillis()
+        if (monitorMode == 1 && now - lastHistogramMs >= HISTOGRAM_INTERVAL_MS) {
+            lastHistogramMs = now
+            binding.histogramView.updateFromLumaPlane(
+                frame.buffer, frame.rowStride, frame.pixelStride, frame.width, frame.height
+            )
+        }
+        if (settings.showLoupe && now - lastLoupeMs >= LOUPE_INTERVAL_MS) {
+            lastLoupeMs = now
+            binding.loupeView.submitFrame(frame)
+        }
+        if (now - lastMonitorMs >= MONITOR_INTERVAL_MS) {
+            lastMonitorMs = now
+            if (monitorMode == 2) binding.peakingView.submitFrame(frame)
+            if (monitorMode == 3) binding.zebraView.submitFrame(frame)
+            if (monitorMode == 4) binding.falseColorView.submitFrame(frame)
+            if (binding.freezeScopeView.visibility == View.VISIBLE && now - lastScopeMs >= SCOPE_INTERVAL_MS) {
+                lastScopeMs = now
+                updateFreezeScope(frame)
+            }
+        }
+    }
+
+    override fun onEngineError(message: String) {
+        mainHandler.post { showCameraError(message) }
+    }
+
+    /**
+     * A camera that fails to bind (or binds and then reports an error) used to produce a
+     * two-second toast over a black viewfinder, which is indistinguishable from "the app is
+     * broken". Now the reason stays on screen, can be copied, and is recorded.
+     */
+    private fun showCameraError(message: String) {
+        if (isFinishing || isDestroyed) return
+        CrashGuard.record(this, "camera engine", IllegalStateException(message))
+        if (!::binding.isInitialized) return
+        binding.lensBadgeText.text = "CAMERA ERROR"
+        binding.captureStatusText.visibility = View.VISIBLE
+        binding.captureStatusText.text = message.take(70) + " · tap to retry"
+        binding.captureStatusText.isClickable = true
+        binding.captureStatusText.setOnClickListener { recreate() }
+        toast(getString(R.string.bind_failed, message))
+        if (cameraErrorDialogShown) return
+        cameraErrorDialogShown = true
+        runCatching {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("Camera could not start")
+                .setMessage(message + "\n\n" + getString(R.string.camera_unavailable_hint))
+                .setPositiveButton(getString(R.string.retry)) { _, _ -> recreate() }
+                .setNeutralButton("Copy") { _, _ ->
+                    copyToClipboard(message + "\n\n" + (CrashGuard.recentErrors(this) ?: ""))
+                    toast("Copied")
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }.onFailure { android.util.Log.w(TAG, "camera error dialog failed", it) }
+    }
+
+    override fun onZoomCapabilitiesChanged(minZoomRatio: Float, maxZoomRatio: Float) {
+        mainHandler.post {
+            minZoom = minZoomRatio
+            maxZoom = min(100f, max(maxZoomRatio, currentLens?.maxZoomRatio ?: 1f))
+            zoomEngine = ZoomEngine(minZoom, maxZoomRatio, maxZoom)
+            refreshZoomPresets()
+        }
+    }
+
+    private var minZoom = 1f
+    private var maxZoom = 100f
+
+    // ── Capture coordinator callbacks ─────────────────────────────────────────
+
+    override fun onBusy(active: Boolean, fraction: Float, message: String) {
+        mainHandler.post {
+            if (active) {
+                binding.captureStatusText.visibility = View.VISIBLE
+                binding.captureStatusText.text = message
+                binding.captureButton.mode = CaptureButtonView.Mode.BUSY
+                binding.captureButton.progress = if (fraction < 0f) 0.35f else fraction
+            } else {
+                binding.captureButton.mode = if (mode == CaptureMode.VIDEO) CaptureButtonView.Mode.VIDEO else CaptureButtonView.Mode.PHOTO
+                binding.captureButton.progress = 0f
+                if (message.isBlank()) {
+                    binding.captureStatusText.visibility = View.GONE
+                } else {
+                    binding.captureStatusText.text = message
+                    mainHandler.postDelayed({
+                        if (!coordinator.isBusy) binding.captureStatusText.visibility = View.GONE
+                    }, 1400L)
+                }
+            }
+            if (message.isNotBlank() && active) updateStatusHints()
+        }
+    }
+
+    override fun onSaved(uri: Uri) {
+        mainHandler.post {
+            haptic(HapticFeedbackConstants.VIRTUAL_KEY)
+            playShutterSound()
+            refreshThumbnail()
+            val isRaw = uri.toString().contains("dng", true)
+            toast(if (isRaw) "RAW saved" else getString(R.string.capture_complete))
+            if (pendingRawJpegSecondPass) {
+                pendingRawJpegSecondPass = false
+                bindCamera(forceRaw = false)
+                mainHandler.postDelayed({ coordinator.singleShot(buildShotContext()) }, 450L)
+            }
+        }
+    }
+
+    override fun onError(message: String) {
+        mainHandler.post {
+            if (message.isNotBlank()) toast(message)
+            binding.captureStatusText.visibility = View.GONE
+            binding.captureButton.mode = CaptureButtonView.Mode.PHOTO
+        }
+    }
+
+    override fun onFrameProgress(captured: Int, total: Int) {
+        mainHandler.post {
+            binding.captureStatusText.visibility = View.VISIBLE
+            binding.captureStatusText.text = getString(R.string.capture_frames_progress, captured, total)
+            binding.captureButton.progress = captured.toFloat() / total.coerceAtLeast(1)
+        }
+    }
+
+    // ── Recording callbacks ───────────────────────────────────────────────────
+
+    override fun onRecordingState(state: VideoRecorderController.State) {
+        // A rotation would recreate the activity and kill the recorder; hold the current
+        // orientation for the duration of the take.
+        requestedOrientation = if (state.recording) {
+            ActivityInfo.SCREEN_ORIENTATION_LOCKED
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        }
+        mainHandler.post {
+            recordingActive = state.recording
+            recordingPaused = state.paused
+            binding.captureButton.mode = when {
+                state.recording && state.paused -> CaptureButtonView.Mode.PAUSED
+                state.recording -> CaptureButtonView.Mode.RECORDING
+                else -> if (mode == CaptureMode.VIDEO) CaptureButtonView.Mode.VIDEO else CaptureButtonView.Mode.PHOTO
+            }
+            binding.pauseButton.visibility = if (state.recording) View.VISIBLE else View.GONE
+            binding.pauseButton.setImageResource(
+                if (state.paused) R.drawable.ic_record else R.drawable.ic_pause
+            )
+            binding.recordTimerText.visibility = if (state.recording) View.VISIBLE else View.GONE
+            if (!state.recording) {
+                mainHandler.removeCallbacks(recordTickRunnable)
+                binding.recordTimerText.text = ""
+            }
+        }
+    }
+
+    override fun onRecordingFinalized(uri: Uri) {
+        mainHandler.post {
+            toast(getString(R.string.capture_complete))
+            refreshThumbnail()
+        }
+    }
+
+    override fun onRecordingError(message: String) {
+        mainHandler.post { toast(message) }
+    }
+
+    // ── Shutter ───────────────────────────────────────────────────────────────
+
+    private fun onShutterPressed() {
+        if (sphereSession != null) {
+            finishSphereSession()
+            return
+        }
+        if (mode == CaptureMode.VIDEO) {
+            toggleRecording()
+            return
+        }
+        if (coordinator.inSequence) {
+            sequenceShutter()
+            return
+        }
+        if (coordinator.isBusy) return
+        if (settings.timerSeconds > 0) {
+            startCountdown(settings.timerSeconds) { takePhoto() }
+        } else {
+            takePhoto()
+        }
+    }
+
+    private fun onShutterLongPressed() {
+        if (sphereSession != null) return
+        when {
+            mode == CaptureMode.VIDEO -> toggleRecordingPause()
+            mode == CaptureMode.PRO -> openProPanel()
+            else -> {
+                if (coordinator.isBusy) return
+                haptic(HapticFeedbackConstants.LONG_PRESS)
+                coordinator.burst(buildShotContext(), settings.burstCount)
+            }
+        }
+    }
+
+    private fun takePhoto() {
+        if (mode == CaptureMode.PANORAMA) {
+            startSphereSession()
+            return
+        }
+        if (mode == CaptureMode.LIGHT) {
+            startSequence(CaptureMode.LIGHT, SequenceConfig(frames = settings.nightFrames.coerceIn(4, 12), intervalMs = 420L))
+            return
+        }
+        if (mode == CaptureMode.TIMELAPSE) {
+            val frames = (60 / settings.intervalSeconds.coerceAtLeast(1)).coerceIn(5, 120)
+            startSequence(CaptureMode.TIMELAPSE, SequenceConfig(frames = frames, intervalMs = settings.intervalSeconds * 1000L))
+            return
+        }
+        if (zoom >= EXTREME_ZOOM_THRESHOLD && !isStableForCapture()) {
+            beginSettledCapture()
+            return
+        }
+        captureNow()
+    }
+
+    private fun captureNow() {
+        val lens = currentLens ?: return
+        if (mode == CaptureMode.ASTRO) {
+            if (abs(rollDegrees) > 3f || shakeLevel > 0.25f) {
+                toast(getString(R.string.astro_tripod_needed))
+            }
+        }
+        val wantsRaw = (settings.photoFormat == PhotoFormat.RAW || settings.photoFormat == PhotoFormat.RAW_JPEG) &&
+            lens.supportsRaw
+        if (wantsRaw && !rawBound) {
+            bindCamera(forceRaw = true)
+            mainHandler.postDelayed({ coordinator.singleShot(buildShotContext(), raw = true) }, 350L)
+            if (settings.photoFormat == PhotoFormat.RAW_JPEG) pendingRawJpegSecondPass = true
+            return
+        }
+        if (wantsRaw) {
+            coordinator.singleShot(buildShotContext(), raw = true)
+            if (settings.photoFormat == PhotoFormat.RAW_JPEG) pendingRawJpegSecondPass = true
+            return
+        }
+        if (rawBound) {
+            bindCamera(forceRaw = false)
+            mainHandler.postDelayed({ coordinator.shoot(buildShotContext()) }, 350L)
+            return
+        }
+        if (mode == CaptureMode.ASTRO) {
+            // Astro needs a long manual exposure; the coordinator hands us a snapshot with
+            // manual mode + a cool white balance, which we push into the live session.
+            pro = coordinator.applyAstroExposure(
+                pro,
+                settings.astroExposureSeconds,
+                pro.isoValue()
+            )
+            engine.applySessionOptions(pro, lens, displayRotation(), videoConfig())
+            updateHud()
+        }
+        coordinator.shoot(buildShotContext())
+    }
+
+    private fun buildShotContext(): ShotContext {
+        val mapping = zoomEngine.map(zoom)
+        return ShotContext(
+            mode = mode,
+            zoomRatio = mapping.total,
+            nativeZoom = mapping.native,
+            lensLabel = currentLens?.label ?: "",
+            aspect = settings.defaultAspect,
+            portraitStrength = if (mode == CaptureMode.PORTRAIT) settings.portraitStrength else 0,
+            accumulation = AccumulationMode.LIGHTEN,
+            tripodStable = isStableForCapture(),
+            cropOffsetX = cropOffsetX,
+            cropOffsetY = cropOffsetY
+        )
+    }
+
+    private data class SequenceConfig(val frames: Int, val intervalMs: Long)
+
+    private fun startSequence(modeForSequence: CaptureMode, config: SequenceConfig) {
+        val kind = when (modeForSequence) {
+            CaptureMode.PANORAMA -> com.example.zoomhundred.camera.SequenceKind.PANORAMA
+            CaptureMode.LIGHT -> com.example.zoomhundred.camera.SequenceKind.LIGHT_TRAIL
+            CaptureMode.TIMELAPSE -> com.example.zoomhundred.camera.SequenceKind.TIMELAPSE
+            else -> return
+        }
+        binding.captureButton.mode = CaptureButtonView.Mode.RECORDING
+        coordinator.startSequence(buildShotContext(), kind, config.frames, config.intervalMs)
+        when (kind) {
+            com.example.zoomhundred.camera.SequenceKind.PANORAMA ->
+                toast(getString(R.string.pano_capture_hint))
+            com.example.zoomhundred.camera.SequenceKind.LIGHT_TRAIL ->
+                toast(getString(R.string.light_trail_hint))
+            else -> toast(getString(R.string.timelapse_hint))
+        }
+    }
+
+    // ── Guided photo sphere ───────────────────────────────────────────────────
+
+    /**
+     * Starts a sweep. Frames are taken automatically as the phone moves; the user never
+     * presses the shutter. Tapping the shutter again stops and stitches.
+     */
+    private fun startSphereSession() {
+        if (sphereSession != null) return
+        if (coordinator.isBusy) return
+        if (zoom > 2.05f) {
+            animateZoom(1f)
+            toast(getString(R.string.sphere_zoom_hint))
+            return
+        }
+        val directory = java.io.File(cacheDir, "sphere").apply { if (!exists()) mkdirs() }
+        val session = SphereCaptureController(
+            context = this,
+            hFovDegrees = engine.horizontalFovDegrees(),
+            overlay = binding.sphereOverlay,
+            captureFrame = { onSaved, onError ->
+                val file = java.io.File(directory, "s_${System.currentTimeMillis()}.jpg")
+                engine.captureStillToFile(file, onSaved, onError)
+            },
+            onProgress = { _, percent, message ->
+                binding.captureStatusText.visibility = View.VISIBLE
+                binding.captureStatusText.text = message
+                binding.captureButton.progress = percent / 100f
+            },
+            onAutoFinish = { finishSphereSession() }
+        )
+        if (!session.start()) {
+            binding.captureStatusText.visibility = View.GONE
+            toast(getString(R.string.sphere_no_gyro))
+            return
+        }
+        sphereSession = session
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+        binding.sphereOverlay.visibility = View.VISIBLE
+        binding.captureButton.mode = CaptureButtonView.Mode.RECORDING
+        binding.captureButton.progress = 0f
+        haptic(HapticFeedbackConstants.VIRTUAL_KEY)
+    }
+
+    private fun finishSphereSession() {
+        val session = sphereSession ?: return
+        sphereSession = null
+        binding.sphereOverlay.visibility = View.GONE
+        binding.captureButton.mode = CaptureButtonView.Mode.PHOTO
+        binding.captureButton.progress = 0f
+        binding.captureStatusText.visibility = View.GONE
+        val shots = session.stop()
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        if (shots.size < 3) {
+            shots.forEach { runCatching { it.file.delete() } }
+            toast(getString(R.string.sphere_too_short))
+            return
+        }
+        binding.captureButton.mode = CaptureButtonView.Mode.BUSY
+        coordinator.stitchSphere(shots, engine.horizontalFovDegrees(), buildShotContext())
+        haptic(HapticFeedbackConstants.VIRTUAL_KEY)
+    }
+
+    private fun cancelSphereSession() {
+        val session = sphereSession ?: return
+        sphereSession = null
+        session.cancel()
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+        if (!::binding.isInitialized) return
+        binding.sphereOverlay.visibility = View.GONE
+        binding.captureButton.mode = CaptureButtonView.Mode.PHOTO
+        binding.captureButton.progress = 0f
+        binding.captureStatusText.visibility = View.GONE
+    }
+
+    private fun sequenceShutter() {
+        when (mode) {
+            CaptureMode.PANORAMA -> coordinator.capturePanoramaFrame()
+            else -> {
+                coordinator.finishSequence()
+                binding.captureButton.mode = CaptureButtonView.Mode.PHOTO
+            }
+        }
+    }
+
+    private fun beginSettledCapture() {
+        settledCapturePending = true
+        settledStartedMs = SystemClock.uptimeMillis()
+        binding.captureStatusText.visibility = View.VISIBLE
+        binding.captureStatusText.text = getString(R.string.capture_waiting_for_stillness)
+        toast(getString(R.string.capture_waiting_for_stillness))
+        mainHandler.removeCallbacks(settledRunnable)
+        mainHandler.post(settledRunnable)
+    }
+
+    private fun updateSettledCapture() {
+        if (!settledCapturePending) return
+        val elapsed = SystemClock.uptimeMillis() - settledStartedMs
+        binding.captureButton.progress = (elapsed.toFloat() / SETTLED_MIN_DELAY_MS).coerceIn(0f, 1f)
+        if ((elapsed >= SETTLED_MIN_DELAY_MS && isStableForCapture()) || elapsed >= SETTLED_TIMEOUT_MS) {
+            settledCapturePending = false
+            binding.captureButton.progress = 0f
+            captureNow()
+        } else {
+            mainHandler.postDelayed(settledRunnable, 33L)
+        }
+    }
+
+    private fun cancelSettledCapture() {
+        settledCapturePending = false
+        mainHandler.removeCallbacks(settledRunnable)
+    }
+
+    // ── Timer / countdown ─────────────────────────────────────────────────────
+
+    private fun startCountdown(seconds: Int, action: () -> Unit) {
+        cancelCountdown()
+        countdownRemaining = seconds
+        val token = countdownToken
+        binding.captureStatusText.visibility = View.VISIBLE
+        binding.captureStatusText.text = countdownRemaining.toString()
+        val tick = object : Runnable {
+            override fun run() {
+                // A cancelled or restarted countdown must never fire its capture.
+                if (token != countdownToken || isFinishing || isDestroyed) return
+                if (countdownRemaining <= 0) {
+                    binding.captureStatusText.visibility = View.GONE
+                    action()
+                    return
+                }
+                binding.captureStatusText.text = countdownRemaining.toString()
+                countdownRemaining--
+                mainHandler.postDelayed(this, 1000L)
+            }
+        }
+        mainHandler.postDelayed(tick, 1000L)
+    }
+
+    private fun cancelCountdown() {
+        countdownToken++
+        countdownRemaining = -1
+        binding.captureStatusText.visibility = View.GONE
+    }
+
+    // ── Video ─────────────────────────────────────────────────────────────────
+
+    private fun toggleRecording() {
+        if (recordingActive) {
+            stopRecording()
+            return
+        }
+        if (settings.recordAudio &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+        ) {
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        startRecordingInternal(withAudio = settings.recordAudio)
+    }
+
+    private fun startRecordingInternal(withAudio: Boolean) {
+        val capture = engine.videoCaptureUseCase
+        if (capture == null) {
+            toast(getString(R.string.video_unsupported))
+            return
+        }
+        val name = "Open100x_video_" + java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US)
+            .format(java.util.Date()) + ".mp4"
+        val started = recorderController.start(
+            capture = capture,
+            displayName = name,
+            relativePath = ImageStore.relativeDir(settings.saveSubfolder),
+            withAudio = withAudio
+        )
+        if (started) {
+            recordingActive = true
+            mainHandler.post(recordTickRunnable)
+            haptic(HapticFeedbackConstants.VIRTUAL_KEY)
+        }
+    }
+
+    private fun stopRecording() {
+        recorderController.stop()
+        recordingActive = false
+        mainHandler.removeCallbacks(recordTickRunnable)
+        binding.recordTimerText.visibility = View.GONE
+        binding.pauseButton.visibility = View.GONE
+        binding.captureButton.mode = if (mode == CaptureMode.VIDEO) CaptureButtonView.Mode.VIDEO else CaptureButtonView.Mode.PHOTO
+    }
+
+    private fun toggleRecordingPause() {
+        if (!recordingActive) return
+        if (recordingPaused) recorderController.resume() else recorderController.pause()
+    }
+
+    private fun updateStorageEstimate() {
+        val bytesPerSecond = recorderController.bytesPerSecond()
+        val free = ImageStore.freeBytes()
+        binding.storageText.text = if (bytesPerSecond > 0) {
+            val remainingSeconds = free / bytesPerSecond
+            getString(R.string.pro_remaining, formatDuration(remainingSeconds * 1000))
+        } else {
+            "${ImageStore.formatBytes(free)} free"
+        }
+    }
+
+    // ── Zoom ──────────────────────────────────────────────────────────────────
+
+    private fun refreshZoomPresets() {
+        val hasUltraWide = capabilities.hasUltraWide
+        val available = settings.zoomPresets + ZoomEngine.DEFAULT_STOPS
+        val presets = zoomEngine.presets(available.distinct(), hasUltraWide)
+        binding.zoomRail.minZoom = minZoom
+        binding.zoomRail.maxZoom = maxZoom
+        binding.zoomRail.presets = presets
+        binding.zoomSlider.valueFrom = 0f
+        binding.zoomSlider.valueTo = 1f
+        binding.zoomSlider.stepSize = 0f
+        buildZoomCapsule(presets)
+    }
+
+    /** iOS-style zoom capsule: circular stops, the current one filled white. */
+    private fun buildZoomCapsule(presets: List<ZoomPreset>) {
+        val container = binding.zoomPresetRow
+        container.removeAllViews()
+        // Nothing to show until the lens reports its stops.
+        container.visibility = if (presets.isEmpty()) View.GONE else View.VISIBLE
+        val chips = ArrayList<Pair<Float, TextView>>()
+        // Six stops fit on a 360 dp phone. The last one is always the lens' maximum, so
+        // the 100× end of the range can never be cropped away by that limit.
+        val shown = if (presets.size <= 6) presets else presets.take(5) + presets.last()
+        shown.forEach { preset ->
+            val chip = TextView(this).apply {
+                text = preset.label
+                textSize = 13f
+                includeFontPadding = false
+                letterSpacing = 0.01f
+                gravity = android.view.Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                minWidth = dp(38)
+                setPadding(dp(9), 0, dp(9), 0)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, dp(32)
+                ).apply { marginStart = dp(2); marginEnd = dp(2) }
+                setOnClickListener { animateZoom(preset.ratio) }
+            }
+            container.addView(chip)
+            chips.add(preset.ratio to chip)
+        }
+        zoomChips = chips
+        applyZoomChipState(zoom)
+    }
+
+    private fun applyZoomChipState(value: Float) {
+        if (zoomChips.isEmpty()) return
+        val nearest = zoomChips.minByOrNull {
+            abs(ZoomEngine.logDistance(it.first, value))
+        }
+        val snapped = nearest != null && ZoomEngine.logDistance(nearest.first, value) < 0.18f
+        zoomChips.forEach { (ratio, chip) ->
+            val active = snapped && nearest != null && ratio == nearest.first
+            if (active) {
+                chip.background = ContextCompat.getDrawable(this, R.drawable.bg_zoom_chip_active)
+                chip.setTextColor(ContextCompat.getColor(this, R.color.text_on_accent))
+                chip.typeface = android.graphics.Typeface.create(
+                    "sans-serif-medium", android.graphics.Typeface.NORMAL
+                )
+            } else {
+                chip.background = null
+                chip.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
+                chip.typeface = android.graphics.Typeface.create(
+                    "sans-serif", android.graphics.Typeface.NORMAL
+                )
+            }
+        }
+    }
+
+    private fun setZoom(value: Float, userInitiated: Boolean) {
+        if (userInitiated && settings.zoomLocked) return
+        val clamped = zoomEngine.clamp(value)
+        zoom = clamped
+        val mapping = zoomEngine.map(clamped)
+        engine.setZoomRatio(mapping.native)
+        binding.previewView.scaleX = mapping.digital
+        binding.previewView.scaleY = mapping.digital
+        val maxShiftX = binding.previewView.width * (mapping.digital - 1f) / 2f
+        val maxShiftY = binding.previewView.height * (mapping.digital - 1f) / 2f
+        binding.previewView.translationX = -cropOffsetX * maxShiftX
+        binding.previewView.translationY = -cropOffsetY * maxShiftY
+        binding.extremeOverlay.updateCropOffset(cropOffsetX, cropOffsetY)
+        binding.extremeOverlay.updateZoomInfo(clamped, currentFovH(), currentFovV())
+        binding.zoomRail.zoom = clamped
+        binding.zoomValueText.text = ZoomEngine.formatReadout(clamped)
+        binding.loupeView.zoomRatio = clamped
+        if (drawerOpen) binding.zoomSlider.value = zoomEngine.zoomToSlider(clamped)
+        applyZoomChipState(clamped)
+        // The reticle/FoV read-out belongs to long zoom and Pro mode, not to the idle screen.
+        binding.extremeOverlay.visibility =
+            if (mode == CaptureMode.PRO) View.VISIBLE else View.INVISIBLE
+        updateHud()
+        updateStatusHints()
+        if (settings.showLoupe) updateLoupeSource()
+    }
+
+    private fun animateZoom(target: Float) {
+        if (settings.zoomLocked) {
+            toast(getString(R.string.zoom_locked, zoom))
+            return
+        }
+        val start = zoom
+        val end = zoomEngine.clamp(target)
+        val animator = ValueAnimator.ofFloat(start, end).apply {
+            duration = 220L
+            addUpdateListener { setZoom(it.animatedValue as Float, userInitiated = false) }
+            start()
+        }
+        // Keep a reference so the animator is not garbage collected mid-flight.
+        zoomAnimator = animator
+    }
+
+    private var zoomAnimator: ValueAnimator? = null
+
+    private fun nudgeZoom(direction: Int) {
+        val next = if (direction > 0) zoom * 1.35f else zoom / 1.35f
+        setZoom(next, userInitiated = true)
+    }
+
+    private fun toggleZoomLock() {
+        settings.zoomLocked = !settings.zoomLocked
+        binding.zoomRail.locked = settings.zoomLocked
+        binding.zoomLockButton.alpha = if (settings.zoomLocked) 1f else 0.55f
+        toast(
+            if (settings.zoomLocked) getString(R.string.zoom_locked, zoom)
+            else getString(R.string.zoom_unlocked)
+        )
+        settings.save(this)
+    }
+
+    private fun currentFovH(): Float = (currentLens?.fovHorizontalDeg ?: 0f) / zoom.coerceAtLeast(0.1f)
+
+    private fun currentFovV(): Float = (currentLens?.fovVerticalDeg ?: 0f) / zoom.coerceAtLeast(0.1f)
+
+    // ── Lens switching ────────────────────────────────────────────────────────
+
+    private fun switchCamera() {
+        usingFrontCamera = !usingFrontCamera
+        currentLens = if (usingFrontCamera) capabilities.frontLenses.firstOrNull() ?: capabilities.lenses.first()
+        else pickDefaultLens()
+        if (usingFrontCamera && capabilities.frontLenses.isEmpty()) {
+            usingFrontCamera = false
+            toast(getString(R.string.no_front_camera))
+        }
+        cropOffsetX = 0f
+        cropOffsetY = 0f
+        zoom = 1f
+        bindCamera()
+        refreshZoomPresets()
+    }
+
+    private fun switchLens() {
+        val back = capabilities.backLenses
+        if (back.size <= 1) {
+            toast(getString(R.string.no_other_lens))
+            return
+        }
+        val index = back.indexOfFirst { it.cameraId == currentLens?.cameraId }
+        currentLens = back[(index + 1).mod(back.size)]
+        usingFrontCamera = false
+        bindCamera()
+    }
+
+    /** The top bar says which lens is live; the zoom itself lives in the capsule. */
+    private fun lensLabel(lens: LensCapabilities): String = lens.label
+
+    // ── Modes & UI state ──────────────────────────────────────────────────────
+
+    private fun buildModeStrip() {
+        val container = binding.modeStripContainer
+        container.removeAllViews()
+        CaptureMode.PRIMARY.forEach { candidate ->
+            val chip = TextView(this).apply {
+                text = candidate.shortLabel
+                textSize = 13f
+                letterSpacing = 0.04f
+                includeFontPadding = false
+                gravity = android.view.Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                setPadding(dp(12), 0, dp(12), 0)
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+                )
+                setOnClickListener { onModeChipClicked(candidate) }
+            }
+            container.addView(chip)
+        }
+        highlightActiveMode()
+    }
+
+    private fun onModeChipClicked(candidate: CaptureMode) {
+        if (candidate == CaptureMode.MORE) {
+            openToolsSheet(showSecondaryModes = true)
+            return
+        }
+        setMode(candidate)
+    }
+
+    private fun setMode(newMode: CaptureMode) {
+        if (newMode == mode) return
+        if (sphereSession != null) cancelSphereSession()
+        if (recordingActive) {
+            toast("Stop recording first")
+            return
+        }
+        val previousVideo = mode.isVideoMode
+        mode = newMode
+        highlightActiveMode()
+        binding.nightOverlay.visibility = if (mode == CaptureMode.NIGHT || settings.nightUi) View.VISIBLE else View.GONE
+        binding.peakingView.visibleIf(monitorMode == 2)
+        if (mode.isVideoMode != previousVideo) {
+            bindCamera()
+        } else {
+            updateStatusHints()
+        }
+        binding.captureButton.mode = when {
+            mode.isVideoMode -> CaptureButtonView.Mode.VIDEO
+            else -> CaptureButtonView.Mode.PHOTO
+        }
+        binding.hdrButton.visibility = if (mode == CaptureMode.PHOTO) View.VISIBLE else View.GONE
+        applySettingsToUi()
+    }
+
+    private fun highlightActiveMode() {
+        val container = binding.modeStripContainer
+        for (index in 0 until container.childCount) {
+            val chip = container.getChildAt(index) as? TextView ?: continue
+            val candidate = CaptureMode.PRIMARY.getOrNull(index) ?: continue
+            val active = candidate == mode
+            chip.setTextColor(
+                ContextCompat.getColor(this, if (active) R.color.accent else R.color.mode_inactive)
+            )
+            chip.typeface = android.graphics.Typeface.create(
+                if (active) "sans-serif-medium" else "sans-serif",
+                android.graphics.Typeface.NORMAL
+            )
+            if (active) centreModeChip(chip)
+        }
+    }
+
+    /** Keeps the selected mode under the thumb, the way stock cameras do. */
+    private fun centreModeChip(chip: android.view.View) {
+        binding.modeStripScroll.post {
+            val target = chip.left + chip.width / 2 - binding.modeStripScroll.width / 2
+            binding.modeStripScroll.smoothScrollTo(target.coerceAtLeast(0), 0)
+        }
+    }
+
+    private fun applySettingsToUi() {
+        try {
+            applySettingsToUiUnsafe()
+        } catch (error: Throwable) {
+            CrashGuard.record(this, "applySettingsToUi", error)
+        }
+    }
+
+    private fun applySettingsToUiUnsafe() {
+        binding.hdrButton.isSelected = settings.hdrEnabled
+        binding.hdrButton.visibility = if (mode == CaptureMode.PHOTO) View.VISIBLE else View.GONE
+        binding.gridOverlay.gridMode = if (settings.gridMode == GridMode.NONE) GridMode.NONE else settings.gridMode
+        binding.levelView.visibleIf(settings.levelEnabled)
+        binding.hudView.visibleIf(settings.showHud)
+        binding.loupeView.visibleIf(settings.showLoupe)
+        binding.thumbnailView.visibleIf(settings.showThumbnail)
+        // Stock-camera chrome: the shake meter is replaced by the edge glow, and the
+        // advanced rail only exists in Pro mode.
+        binding.shakeMeterRow.visibility = View.GONE
+        binding.sidePanel.visibility = if (mode == CaptureMode.PRO) View.VISIBLE else View.GONE
+        binding.extremeOverlay.visibility =
+            if (mode == CaptureMode.PRO) View.VISIBLE else View.INVISIBLE
+        binding.captureStatusText.visibility = View.GONE
+        binding.zoomRail.locked = settings.zoomLocked
+        binding.nightOverlay.visibility = if (settings.nightUi || mode == CaptureMode.NIGHT) View.VISIBLE else View.GONE
+        binding.timerButton.alpha = if (settings.timerSeconds > 0) 1f else 0.6f
+        binding.flashButton.setImageResource(
+            when (settings.flashMode) {
+                FlashMode.OFF, FlashMode.TORCH -> R.drawable.ic_flash_off
+                FlashMode.AUTO -> R.drawable.ic_flash_auto
+                FlashMode.ON -> R.drawable.ic_flash_on
+            }
+        )
+        binding.hdrButton.alpha = 1f
+        if (!recordingActive && !coordinator.isBusy) {
+            binding.captureButton.mode = if (mode.isVideoMode)
+                CaptureButtonView.Mode.VIDEO else CaptureButtonView.Mode.PHOTO
+        }
+        updateMonitorVisibility()
+        applyLoupeSize()
+        updateHud()
+        updateAspectGuide()
+        updateStatusHints()
+    }
+
+    private fun applyLoupeSize() {
+        val params = binding.loupeView.layoutParams
+        val size = dp(settings.loupeSizeDp)
+        if (params.width != size || params.height != size) {
+            params.width = size
+            params.height = size
+            binding.loupeView.layoutParams = params
+        }
+    }
+
+    private fun restoreLoupePosition() {
+        binding.loupeView.post {
+            val parent = binding.loupeView.parent as? View ?: return@post
+            val maxX = (parent.width - binding.loupeView.width).toFloat().coerceAtLeast(1f)
+            val maxY = (parent.height - binding.loupeView.height).toFloat().coerceAtLeast(1f)
+            val fx = if (settings.loupeX < 0f) 0.92f else settings.loupeX
+            val fy = if (settings.loupeY < 0f) 0.03f else settings.loupeY
+            binding.loupeView.moveTo(fx * maxX, fy * maxY)
+            updateLoupeSource()
+        }
+    }
+
+    private fun updateLoupeSource() {
+        val preview = binding.previewView
+        val loupe = binding.loupeView
+        if (preview.width == 0 || preview.height == 0) return
+        val previewLoc = IntArray(2)
+        val loupeLoc = IntArray(2)
+        preview.getLocationInWindow(previewLoc)
+        loupe.getLocationInWindow(loupeLoc)
+        val centerX = loupeLoc[0] + loupe.width / 2f - previewLoc[0]
+        val centerY = loupeLoc[1] + loupe.height / 2f - previewLoc[1]
+        loupe.setSourceCenter(centerX / preview.width, centerY / preview.height)
+    }
+
+    private fun updateAspectGuide() {
+        val previewAspect = if (binding.previewView.height > 0) {
+            binding.previewView.width.toFloat() / binding.previewView.height
+        } else 0.75f
+        binding.gridOverlay.aspectGuide = settings.defaultAspect.guideFraction(previewAspect)
+        binding.gridOverlay.showCenterCross = settings.gridMode == GridMode.CROSS
+    }
+
+    private fun updateMonitorVisibility() {
+        binding.histogramView.visibleIf(monitorMode == 1)
+        binding.peakingView.visibleIf(monitorMode == 2)
+        binding.zebraView.visibleIf(monitorMode == 3)
+        binding.falseColorView.visibleIf(monitorMode == 4)
+        binding.monitorButton.alpha = if (monitorMode == 0) 0.6f else 1f
+    }
+
+    private fun cycleMonitoring() {
+        monitorMode = (monitorMode + 1) % 5
+        settings.peakingEnabled = monitorMode == 2
+        settings.zebraEnabled = monitorMode == 3
+        settings.histogramEnabled = monitorMode == 1
+        settings.save(this)
+        updateMonitorVisibility()
+        if (monitorMode == 2) binding.peakingView.clear()
+        if (monitorMode == 3) binding.zebraView.clear()
+        if (monitorMode == 4) binding.falseColorView.clear()
+    }
+
+    private fun cycleGrid() {
+        val next = when (settings.gridMode) {
+            GridMode.NONE -> GridMode.THIRDS
+            GridMode.THIRDS -> GridMode.GOLDEN
+            GridMode.GOLDEN -> GridMode.SPIRAL
+            GridMode.SPIRAL -> GridMode.CROSS
+            GridMode.CROSS -> GridMode.DIAGONAL
+            GridMode.DIAGONAL -> GridMode.SQUARE
+            GridMode.SQUARE -> GridMode.NONE
+        }
+        settings.gridMode = next
+        settings.save(this)
+        applySettingsToUi()
+    }
+
+    private fun toggleLoupe() {
+        settings.showLoupe = !settings.showLoupe
+        settings.save(this)
+        binding.loupeView.visibleIf(settings.showLoupe)
+        if (settings.showLoupe) {
+            restoreLoupePosition()
+            toast(getString(R.string.loupe))
+        } else {
+            binding.loupeView.clear()
+        }
+    }
+
+    private fun cycleFlash() {
+        settings.flashMode = when (settings.flashMode) {
+            FlashMode.OFF -> FlashMode.AUTO
+            FlashMode.AUTO -> FlashMode.ON
+            FlashMode.ON, FlashMode.TORCH -> FlashMode.OFF
+        }
+        if (settings.flashMode != FlashMode.TORCH && engine.hasFlash()) engine.setTorch(false)
+        settings.save(this)
+        applySettingsToUi()
+        if (engine.isBound) bindCamera()
+    }
+
+    private fun cycleTimer() {
+        settings.timerSeconds = when (settings.timerSeconds) {
+            0 -> 3
+            3 -> 10
+            else -> 0
+        }
+        settings.save(this)
+        applySettingsToUi()
+        toast(
+            if (settings.timerSeconds == 0) getString(R.string.timer_off)
+            else getString(R.string.timer_seconds, settings.timerSeconds)
+        )
+    }
+
+    private fun toggleHdr() {
+        settings.hdrEnabled = !settings.hdrEnabled
+        settings.save(this)
+        applySettingsToUi()
+        toast(if (settings.hdrEnabled) "HDR burst on" else "HDR off")
+    }
+
+    private fun toggleTorch() {
+        val on = !binding.flashlightButton.isSelected
+        if (!engine.setTorch(on)) {
+            toast(getString(R.string.flash_unavailable))
+            return
+        }
+        binding.flashlightButton.isSelected = on
+        binding.flashlightButton.text = if (on) getString(R.string.flash_on) else getString(R.string.flash_off)
+        if (on) settings.flashMode = FlashMode.TORCH else settings.flashMode = FlashMode.OFF
+        applySettingsToUi()
+    }
+
+    private fun showOnboardingIfNeeded() {
+        if (settings.onboardingShown) return
+        binding.gestureHintOverlay.visibility = View.VISIBLE
+        settings.onboardingShown = true
+        settings.save(this)
+        mainHandler.postDelayed({
+            binding.gestureHintOverlay.animate().alpha(0f).setDuration(300L)
+                .withEndAction {
+                    binding.gestureHintOverlay.visibility = View.GONE
+                    binding.gestureHintOverlay.alpha = 1f
+                }.start()
+        }, 6500L)
+    }
+
+    // ── HUD / status ──────────────────────────────────────────────────────────
+
+    private fun updateHud() {
+        if (!settings.showHud) return
+        val mapping = zoomEngine.map(zoom)
+        val lens = currentLens
+        val stabilisation = when {
+            lens?.oisSupported == true && settings.videoStabilization != StabilizationMode.OFF -> "OIS"
+            lens?.previewStabilizationSupported == true -> "EIS+"
+            lens?.videoStabilizationSupported == true -> "EIS"
+            else -> "OFF"
+        }
+        val focus = when {
+            pro.focusMode == com.example.zoomhundred.model.FocusMode.MANUAL -> "MF ${(pro.focusPosition * 100).toInt()}%"
+            pro.focusLocked -> "AF-L"
+            else -> "AF-C"
+        }
+        binding.hudView.state = HudState(
+            focalLengthMm = lens?.focalLengthsMm?.minOrNull() ?: 0f,
+            focalLength35mm = ZoomEngine.focalLength35mm(zoom),
+            zoom = mapping.total,
+            nativeZoom = mapping.native,
+            iso = if (pro.manualMode) pro.isoValue().toString() else "AUTO",
+            shutter = if (pro.manualMode) ProSettings.SHUTTER_LABELS[pro.shutterIndex.coerceIn(0, ProSettings.SHUTTER_LABELS.lastIndex)] else "AUTO",
+            ev = String.format(java.util.Locale.US, "%+.1f", pro.evValue()),
+            whiteBalance = if (pro.wbMode == com.example.zoomhundred.model.WbMode.CUSTOM) "${pro.wbKelvin}K" else pro.wbMode.name.take(3),
+            focus = focus,
+            fps = settings.videoFps,
+            resolution = settings.videoResolution.label,
+            stabilization = stabilisation,
+            hint = if (abs(rollDegrees) > 2f) "TILT ${String.format(java.util.Locale.US, "%.1f°", rollDegrees)}" else null,
+            clipWarning = binding.histogramView.clipping
+        )
+    }
+
+    private fun updateStatusHints() {
+        if (settledCapturePending || coordinator.isBusy) return
+        val hint = when {
+            mode == CaptureMode.NIGHT -> getString(R.string.night_hint)
+            mode == CaptureMode.ASTRO -> getString(R.string.astro_hint)
+            mode == CaptureMode.PORTRAIT -> getString(R.string.portrait_software_note)
+            mode == CaptureMode.FISHEYE -> getString(R.string.fisheye_note)
+            coordinator.inSequence && mode == CaptureMode.PANORAMA -> getString(R.string.pano_guide_keep_going)
+            coordinator.inSequence && mode == CaptureMode.LIGHT -> getString(R.string.light_trail_hint)
+            coordinator.inSequence && mode == CaptureMode.TIMELAPSE -> getString(R.string.timelapse_hint)
+            zoom >= EXTREME_ZOOM_THRESHOLD && !isStableForCapture() -> getString(R.string.capture_hold_still)
+            else -> null
+        }
+        if (hint != null) {
+            binding.captureStatusText.visibility = View.VISIBLE
+            binding.captureStatusText.text = hint
+            mainHandler.removeCallbacks(hintDismiss)
+            mainHandler.postDelayed(hintDismiss, 3200L)
+        } else if (!coordinator.isBusy) {
+            binding.captureStatusText.visibility = View.GONE
+        }
+    }
+
+    // ── Anti-shake & stability ────────────────────────────────────────────────
+
+    private fun startAntiShakeIfNeeded() {
+        if (!settings.antiShake || !antiShake.isAvailable) {
+            antiShake.stop()
+            return
+        }
+        startAntiShake()
+    }
+
+    private fun startAntiShake() {
+        antiShake.onShakeLevel = { level ->
+            shakeLevel = level
+            mainHandler.post {
+                binding.shakeMeter.level = level
+                binding.shakeMeterLabel.text = if (level < 0.2f)
+                    getString(R.string.anti_shake_ready) else getString(R.string.anti_shake_wait)
+                // Edge glow is the peripheral stability cue: it brightens as the hand drifts.
+                val glow = (level * 1.4f).coerceIn(0f, 1f) * 0.75f
+                binding.edgeGlowLeft.alpha = glow
+                binding.edgeGlowRight.alpha = glow
+                binding.edgeGlowTop.alpha = glow * 0.6f
+                binding.edgeGlowBottom.alpha = glow * 0.6f
+            }
+            if (level < 0.18f) {
+                if (stableSinceMs == 0L) stableSinceMs = SystemClock.uptimeMillis()
+            } else {
+                stableSinceMs = 0L
+            }
+            mainHandler.post { updateStatusHints() }
+        }
+        antiShake.start(threshold = pro.antiShakeThreshold, quietWindowMs = 150L)
+    }
+
+    private fun isStableForCapture(): Boolean =
+        stableSinceMs != 0L && SystemClock.uptimeMillis() - stableSinceMs >= 180L
+
+    // ── Freeze scope ──────────────────────────────────────────────────────────
+
+    private fun updateFreezeScope(frame: LumaFrame) {
+        val targetW = 360
+        val scale = max(1, frame.width / targetW)
+        val w = max(1, frame.width / scale)
+        val h = max(1, frame.height / scale)
+        val pixels = IntArray(w * h)
+        try {
+            for (y in 0 until h) {
+                val row = (y * scale) * frame.rowStride
+                for (x in 0 until w) {
+                    val luma = frame.buffer.get(row + (x * scale) * frame.pixelStride).toInt() and 0xFF
+                    pixels[y * w + x] = (0xFF shl 24) or (luma shl 16) or (luma shl 8) or luma
+                }
+            }
+        } catch (_: Exception) {
+            return
+        }
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        bitmap.setPixels(pixels, 0, w, 0, 0, w, h)
+        mainHandler.post {
+            val previous = lastScopeBitmap
+            lastScopeBitmap = bitmap
+            binding.freezeScopeView.setImageBitmap(bitmap)
+            previous?.recycle()
+        }
+    }
+
+    private fun toggleFreezeScope() {
+        if (binding.freezeScopeView.visibility == View.VISIBLE) {
+            binding.freezeScopeView.visibility = View.GONE
+            binding.freezeScopeView.setImageDrawable(null)
+            return
+        }
+        if (lastScopeBitmap == null) {
+            toast(getString(R.string.freeze_scope_wait))
+            return
+        }
+        binding.freezeScopeView.visibility = View.VISIBLE
+        haptic(HapticFeedbackConstants.LONG_PRESS)
+    }
+
+    // ── Gestures ──────────────────────────────────────────────────────────────
+
+    private inner class PinchListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+            dragActive = false
+            pinchStartZoom = zoom
+            return !settings.zoomLocked
+        }
+
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            if (settings.zoomLocked) return false
+            pinchStartZoom *= detector.scaleFactor
+            setZoom(pinchStartZoom, userInitiated = true)
+            return true
+        }
+
+        override fun onScaleEnd(detector: ScaleGestureDetector) {
+            snapZoomToPreset()
+        }
+    }
+
+    private var dragStartY = 0f
+    private var dragStartZoom = 1f
+    private var dragStartX = 0f
+    private var dragActive = false
+    private var pinchStartZoom = 1f
+
+    private fun handleGesture(event: MotionEvent): Boolean {
+        scaleDetector.onTouchEvent(event)
+        gestureDetector.onTouchEvent(event)
+        if (event.pointerCount > 1) {
+            dragActive = false
+            return true
+        }
+        val slop = ViewConfiguration.get(this).scaledTouchSlop
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                binding.zoomValueText.parent?.requestDisallowInterceptTouchEvent(true)
-                zoomWheelDownX = event.x
-                zoomWheelDownY = event.y
-                zoomWheelStartZoom = requestedZoom
-                zoomWheelLongPressed = false
-                zoomWheelMoved = false
-                mainHandler.postDelayed(
-                    zoomWheelLongPressRunnable,
-                    ViewConfiguration.getLongPressTimeout().toLong()
-                )
-                return true
+                dragStartX = event.x
+                dragStartY = event.y
+                dragStartZoom = zoom
+                dragActive = false
             }
             MotionEvent.ACTION_MOVE -> {
-                val dx = event.x - zoomWheelDownX
-                val dy = event.y - zoomWheelDownY
-                if (!zoomWheelLongPressed && abs(dx) > slop && abs(dx) > abs(dy) * 1.15f) {
-                    zoomWheelMoved = true
-                    mainHandler.removeCallbacks(zoomWheelLongPressRunnable)
-                    if (!proSettings.zoomLocked) {
-                        zoomAnimator.cancel()
-                        setZoomImmediately(zoomWheelStartZoom + preciseZoomDelta(dx), syncSlider = true)
-                    }
-                } else if (sqrt(dx * dx + dy * dy) > slop * 2f) {
-                    mainHandler.removeCallbacks(zoomWheelLongPressRunnable)
+                if (settings.zoomLocked) return true
+                val dy = event.y - dragStartY
+                val dx = event.x - dragStartX
+                if (abs(dy) > slop && abs(dy) > abs(dx) * 1.2f) {
+                    dragActive = true
+                    // Drag up = zoom in, with zoom-dependent sensitivity.
+                    val sensitivity = zoomEngine.dragSensitivity(zoom) * 2.4f
+                    val factor = kotlin.math.exp(-dy * sensitivity).toFloat()
+                    setZoom(dragStartZoom * factor, userInitiated = true)
+                } else if (mode == CaptureMode.PRO && abs(dx) > slop * 2 && abs(dx) > abs(dy) * 1.5f) {
+                    // Horizontal drag in Pro mode trims exposure compensation.
+                    val steps = (dx / (slop * 4f)).toInt()
+                    pro.evIndex = (pro.evIndex - steps).coerceIn(0, ProSettings.EV_VALUES.lastIndex)
+                    engine.setExposureCompensation(pro.evValue())
+                    updateHud()
                 }
-                return true
             }
             MotionEvent.ACTION_UP -> {
-                binding.zoomValueText.parent?.requestDisallowInterceptTouchEvent(false)
-                mainHandler.removeCallbacks(zoomWheelLongPressRunnable)
-                if (!zoomWheelMoved && !zoomWheelLongPressed) {
-                    binding.zoomValueText.performClick()
-                }
-                return true
+                if (dragActive) snapZoomToPreset()
+                dragActive = false
             }
-            MotionEvent.ACTION_CANCEL -> {
-                binding.zoomValueText.parent?.requestDisallowInterceptTouchEvent(false)
-                mainHandler.removeCallbacks(zoomWheelLongPressRunnable)
-                return true
-            }
+            MotionEvent.ACTION_CANCEL -> dragActive = false
         }
         return true
     }
 
-    private fun preciseZoomDelta(dxPx: Float): Float {
-        val dxDp = dxPx / resources.displayMetrics.density
-        val sensitivity = when {
-            zoomWheelStartZoom < 10f -> 0.035f
-            zoomWheelStartZoom < 30f -> 0.08f
-            else -> 0.14f
+    private fun snapZoomToPreset() {
+        val nearest = binding.zoomRail.presets.minByOrNull { abs(it.ratio - zoom) } ?: return
+        if (abs(nearest.ratio - zoom) <= 0.05f) return
+        if (abs(nearest.ratio - zoom) < nearest.ratio * 0.18f) animateZoom(nearest.ratio)
+    }
+
+    private fun focusAt(x: Float, y: Float) {
+        val factory = binding.previewView.meteringPointFactory
+        val point = factory.createPoint(x, y)
+        engine.focusAndMeter(point)
+        haptic(HapticFeedbackConstants.VIRTUAL_KEY)
+        showFocusRing(x, y)
+        if (zoom >= 10f) binding.extremeOverlay.lockTarget(x, y)
+    }
+
+    private fun showFocusRing(x: Float, y: Float) {
+        val ring = binding.focusRing
+        ring.visibility = View.VISIBLE
+        ring.translationX = x - ring.width / 2f
+        ring.translationY = y - ring.height / 2f
+        ring.animate().cancel()
+        ring.scaleX = 1.4f
+        ring.scaleY = 1.4f
+        ring.alpha = 1f
+        ring.animate().scaleX(1f).scaleY(1f).alpha(0f).setDuration(600L)
+            .withEndAction { ring.visibility = View.GONE }
+            .start()
+    }
+
+    // ── Precision zoom drawer ─────────────────────────────────────────────────
+
+    private var drawerOpen = false
+    private var drawerDownY = 0f
+
+    private fun setDrawerOpen(open: Boolean) {
+        if (drawerOpen == open) return
+        drawerOpen = open
+        val panel = binding.bottomPanel
+        val closedOffset = dp(360).toFloat()
+        if (open) {
+            panel.visibility = View.VISIBLE
+            panel.translationY = closedOffset
+            panel.alpha = 0f
+            panel.animate().translationY(0f).alpha(1f).setDuration(180L).start()
+            if (!coordinator.isBusy) panel.postDelayed({
+                if (drawerOpen) {
+                    panel.animate().translationY(closedOffset).alpha(0f).setDuration(160L)
+                        .withEndAction { if (!drawerOpen) panel.visibility = View.GONE }
+                        .start()
+                    drawerOpen = false
+                }
+            }, 4200L)
+        } else {
+            panel.animate().translationY(closedOffset).alpha(0f).setDuration(160L)
+                .withEndAction { if (!drawerOpen) panel.visibility = View.GONE }
+                .start()
         }
-        return dxDp * sensitivity
     }
 
     private fun handleDrawerTouch(event: MotionEvent): Boolean {
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                drawerDownX = event.x
-                drawerDownY = event.y
-            }
+            MotionEvent.ACTION_DOWN -> drawerDownY = event.y
             MotionEvent.ACTION_UP -> {
-                val dx = event.x - drawerDownX
-                val dy = event.y - drawerDownY
                 val slop = ViewConfiguration.get(this).scaledTouchSlop
-                if (dy > slop * 4 && abs(dy) > abs(dx)) {
-                    setToolsDrawerOpen(open = false, animate = true)
+                if (event.y - drawerDownY > slop * 3) {
+                    setDrawerOpen(false)
                     return true
                 }
             }
@@ -493,1409 +1895,294 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
-    private fun handleShutterTouch(event: MotionEvent): Boolean {
-        val slop = ViewConfiguration.get(this).scaledTouchSlop
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                shutterDownX = event.x
-                shutterDownY = event.y
-                shutterLongPressFired = false
-                mainHandler.postDelayed(
-                    shutterLongPressRunnable,
-                    ViewConfiguration.getLongPressTimeout().toLong()
-                )
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = event.x - shutterDownX
-                val dy = event.y - shutterDownY
-                if (!shutterLongPressFired && -dy > slop * 3 && abs(dy) > abs(dx) * 1.2f) {
-                    mainHandler.removeCallbacks(shutterLongPressRunnable)
-                    shutterLongPressFired = true
-                    haptic(HapticFeedbackConstants.VIRTUAL_KEY)
-                    openProSettings()
-                } else if (sqrt(dx * dx + dy * dy) > slop * 3) {
-                    mainHandler.removeCallbacks(shutterLongPressRunnable)
+    // ── Sheets / navigation ───────────────────────────────────────────────────
+
+    private fun openToolsSheet(showSecondaryModes: Boolean = false) {
+        val lens = currentLens ?: return
+        ToolsSheet(
+            host = this,
+            settings = settings,
+            capabilities = capabilities,
+            lens = lens,
+            mode = mode,
+            highlightSecondaryModes = showSecondaryModes,
+            callbacks = object : ToolsSheet.Callbacks {
+                override fun onSettingsMutated(rebind: Boolean) {
+                    settings.save(this@MainActivity)
+                    applySettingsToUi()
+                    if (rebind && engine.isBound) bindCamera()
                 }
-                return true
-            }
-            MotionEvent.ACTION_UP -> {
-                mainHandler.removeCallbacks(shutterLongPressRunnable)
-                if (!shutterLongPressFired) {
-                    binding.captureButton.performClick()
-                    haptic(HapticFeedbackConstants.VIRTUAL_KEY)
-                    onCaptureClicked()
+
+                override fun onSelectMode(newMode: CaptureMode) {
+                    setMode(newMode)
                 }
-                return true
-            }
-            MotionEvent.ACTION_CANCEL -> {
-                mainHandler.removeCallbacks(shutterLongPressRunnable)
-                return true
-            }
-        }
-        return true
-    }
 
-    private fun handleCameraGesture(event: MotionEvent): Boolean {
-        val width = binding.gestureLayer.width.toFloat().coerceAtLeast(1f)
-        val height = binding.gestureLayer.height.toFloat().coerceAtLeast(1f)
-        val slop = ViewConfiguration.get(this).scaledTouchSlop.toFloat()
-        val action = event.actionMasked
+                override fun onBurst() = coordinator.burst(buildShotContext(), settings.burstCount)
 
-        if (action == MotionEvent.ACTION_POINTER_DOWN) {
-            maxGesturePointerCount = max(maxGesturePointerCount, event.pointerCount)
-            mainHandler.removeCallbacks(previewLongPressRunnable)
-            previewLongPressArmed = false
-            return true
-        }
+                override fun onBracket() = coordinator.bracket(buildShotContext())
 
-        when (action) {
-            MotionEvent.ACTION_DOWN -> {
-                gestureMode = CameraGestureMode.NONE
-                gestureDownX = event.x
-                gestureDownY = event.y
-                gestureStartZoom = requestedZoom
-                gestureDownTimeMs = SystemClock.uptimeMillis()
-                maxGesturePointerCount = event.pointerCount
-                freezeGestureActive = false
-                previewLongPressArmed = true
-                mainHandler.postDelayed(
-                    previewLongPressRunnable,
-                    ViewConfiguration.getLongPressTimeout().toLong()
-                )
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                maxGesturePointerCount = max(maxGesturePointerCount, event.pointerCount)
-                val dx = event.x - gestureDownX
-                val dy = event.y - gestureDownY
-                if (sqrt(dx * dx + dy * dy) > slop * 1.5f) {
-                    mainHandler.removeCallbacks(previewLongPressRunnable)
-                    previewLongPressArmed = false
-                    if (freezeGestureActive) {
-                        hideFreezeScope()
-                        freezeGestureActive = false
+                override fun onFocusStack() {
+                    if (pro.focusMode != com.example.zoomhundred.model.FocusMode.MANUAL) {
+                        toast(getString(R.string.focus_sweep_unavailable))
+                        return
+                    }
+                    coordinator.focusStack(buildShotContext(), frames = 5, stepMs = 300L) { index, total ->
+                        pro.focusPosition = index.toFloat() / (total - 1).coerceAtLeast(1)
+                        engine.applySessionOptions(pro, lens, displayRotation(), videoConfig())
                     }
                 }
 
-                if (toolsDrawerOpen && dy > slop * 4 && abs(dy) > abs(dx)) {
-                    setToolsDrawerOpen(open = false, animate = true)
-                    pulseEdgeGlow(binding.edgeGlowBottom)
-                    return true
-                }
-
-                if (gestureMode == CameraGestureMode.NONE) {
-                    gestureMode = resolveGestureMode(dx, dy, slop)
-                }
-
-                when (gestureMode) {
-                    CameraGestureMode.RIGHT_EDGE_ZOOM -> {
-                        if (!proSettings.zoomLocked) {
-                            val zoomDelta = (-dy / height) * 120f
-                            zoomAnimator.cancel()
-                            setZoomImmediately(gestureStartZoom + zoomDelta, syncSlider = true)
-                            showEdgeGlow(binding.edgeGlowRight)
+                override fun onStartSequence(target: CaptureMode) {
+                    when (target) {
+                        CaptureMode.PANORAMA -> {
+                            setMode(CaptureMode.PANORAMA)
+                            startSphereSession()
                         }
-                    }
-                    CameraGestureMode.BOTTOM_DRAWER -> {
-                        setToolsDrawerOpen(open = true, animate = true)
-                        showEdgeGlow(binding.edgeGlowBottom)
-                    }
-                    else -> Unit
-                }
-                return true
-            }
-            MotionEvent.ACTION_UP -> {
-                mainHandler.removeCallbacks(previewLongPressRunnable)
-                previewLongPressArmed = false
-                val dx = event.x - gestureDownX
-                val dy = event.y - gestureDownY
-                val distance = sqrt(dx * dx + dy * dy)
-
-                if (freezeGestureActive) {
-                    hideFreezeScope()
-                    freezeGestureActive = false
-                    return true
-                }
-
-                if (toolsDrawerOpen && distance < slop) {
-                    setToolsDrawerOpen(open = false, animate = true)
-                    return true
-                }
-
-                if (maxGesturePointerCount >= 3) {
-                    handleThreeFingerGesture(dx, dy, slop)
-                    return true
-                }
-                if (maxGesturePointerCount >= 2) {
-                    handleTwoFingerGesture(dx, dy, slop)
-                    return true
-                }
-
-                val finalMode = if (gestureMode == CameraGestureMode.NONE) {
-                    resolveGestureMode(dx, dy, slop)
-                } else {
-                    gestureMode
-                }
-                handleCompletedGesture(finalMode, width, event.x, event.y, dx, distance, slop)
-                gestureMode = CameraGestureMode.NONE
-                hideEdgeGlows()
-                return true
-            }
-            MotionEvent.ACTION_CANCEL -> {
-                mainHandler.removeCallbacks(previewLongPressRunnable)
-                previewLongPressArmed = false
-                if (freezeGestureActive) hideFreezeScope()
-                freezeGestureActive = false
-                gestureMode = CameraGestureMode.NONE
-                hideEdgeGlows()
-                return true
-            }
-        }
-        return true
-    }
-
-    private fun resolveGestureMode(dx: Float, dy: Float, slop: Float): CameraGestureMode {
-        if (abs(dx) < slop && abs(dy) < slop) return CameraGestureMode.NONE
-        if (maxGesturePointerCount >= 2) return CameraGestureMode.PREVIEW_PAN
-        return CameraGestureMode.NONE
-    }
-
-    private fun handleCompletedGesture(
-        mode: CameraGestureMode,
-        width: Float,
-        upX: Float,
-        upY: Float,
-        dx: Float,
-        distance: Float,
-        slop: Float
-    ) {
-        when (mode) {
-            CameraGestureMode.RIGHT_EDGE_LENS -> {
-                val longSwitch = max(dp(180f), width * 0.28f)
-                if (-dx >= longSwitch) switchToFrontCamera() else switchLens()
-                pulseEdgeGlow(binding.edgeGlowRight)
-                haptic(HapticFeedbackConstants.VIRTUAL_KEY)
-            }
-            CameraGestureMode.BOTTOM_RAIL -> {
-                val direction = if (dx < 0f) +1 else -1
-                advanceZoomRail(direction)
-                pulseEdgeGlow(binding.edgeGlowBottom)
-                haptic(HapticFeedbackConstants.VIRTUAL_KEY)
-            }
-            CameraGestureMode.TOP_HUD -> {
-                toggleHudHistogram()
-                pulseEdgeGlow(binding.edgeGlowTop)
-            }
-            CameraGestureMode.LEFT_FLASH -> {
-                toggleFlashlight()
-                pulseEdgeGlow(binding.edgeGlowLeft)
-            }
-            CameraGestureMode.LEFT_INFO -> {
-                openAppInfo()
-                pulseEdgeGlow(binding.edgeGlowLeft)
-            }
-            CameraGestureMode.CORNER_HEAT -> {
-                toggleHeatHaze()
-                pulseEdgeGlow(binding.edgeGlowLeft)
-            }
-            CameraGestureMode.CORNER_BRACKET -> {
-                startFocusSweepBracket()
-                pulseEdgeGlow(binding.edgeGlowRight)
-            }
-            CameraGestureMode.BOTTOM_DRAWER -> setToolsDrawerOpen(open = true, animate = true)
-            CameraGestureMode.NONE -> handlePreviewTap(upX, upY, distance, slop)
-            else -> Unit
-        }
-    }
-
-    private fun handlePreviewTap(upX: Float, upY: Float, distance: Float, slop: Float) {
-        if (distance > slop) return
-        val now = SystemClock.uptimeMillis()
-        if (now - lastPreviewTapMs <= DOUBLE_TAP_TIMEOUT_MS) {
-            lastPreviewTapMs = 0L
-            centerDigitalCrop()
-            aimDriftXRad = 0f
-            aimDriftYRad = 0f
-            binding.extremeOverlay.clearTarget()
-            haptic(HapticFeedbackConstants.VIRTUAL_KEY)
-        } else {
-            lastPreviewTapMs = now
-            lockTargetAt(upX, upY)
-        }
-    }
-
-    private fun handleTwoFingerGesture(dx: Float, dy: Float, slop: Float) {
-        if (abs(dx) < slop * 3 && abs(dy) < slop * 3) return
-        if (abs(dx) > abs(dy)) {
-            nudgeDigitalCrop(if (dx > 0f) 1 else -1, 0)
-        } else {
-            nudgeDigitalCrop(0, if (dy > 0f) 1 else -1)
-        }
-        haptic(HapticFeedbackConstants.CLOCK_TICK)
-    }
-
-    private fun handleThreeFingerGesture(dx: Float, dy: Float, slop: Float) {
-        if (abs(dx) < slop * 2 && abs(dy) < slop * 2) {
-            toggleZoomLock()
-            haptic(HapticFeedbackConstants.VIRTUAL_KEY)
-        } else if (abs(dx) > abs(dy)) {
-            cycleGrid()
-            haptic(HapticFeedbackConstants.CLOCK_TICK)
-        }
-    }
-
-    private fun setToolsDrawerOpen(open: Boolean, animate: Boolean) {
-        val drawer = binding.bottomPanel
-        toolsDrawerOpen = open
-        drawer.animate().cancel()
-        val landscape = !isPortraitUi()
-        if (landscape) {
-            drawer.visibility = View.VISIBLE
-            drawer.alpha = 1f
-            drawer.translationX = 0f
-            drawer.translationY = 0f
-            return
-        }
-        val closedOffset = if (landscape) dp(360f) else dp(420f)
-        if (open) {
-            drawer.visibility = View.VISIBLE
-            if (!animate) {
-                drawer.alpha = 1f
-                drawer.translationX = 0f
-                drawer.translationY = 0f
-                return
-            }
-            if (landscape) drawer.translationX = closedOffset else drawer.translationY = closedOffset
-            drawer.alpha = 0f
-            drawer.animate()
-                .alpha(1f)
-                .translationX(0f)
-                .translationY(0f)
-                .setDuration(180L)
-                .start()
-        } else {
-            if (!animate) {
-                drawer.alpha = 0f
-                drawer.translationX = if (landscape) closedOffset else 0f
-                drawer.translationY = if (landscape) 0f else closedOffset
-                drawer.visibility = View.GONE
-                return
-            }
-            drawer.animate()
-                .alpha(0f)
-                .translationX(if (landscape) closedOffset else 0f)
-                .translationY(if (landscape) 0f else closedOffset)
-                .setDuration(160L)
-                .withEndAction { if (!toolsDrawerOpen) drawer.visibility = View.GONE }
-                .start()
-        }
-    }
-
-    private fun showGestureHints(force: Boolean) {
-        val prefs = getSharedPreferences(GESTURE_PREFS, Context.MODE_PRIVATE)
-        if (!force && prefs.getBoolean(GESTURE_ONBOARDING_SHOWN, false)) return
-        binding.gestureHintOverlay.animate().cancel()
-        binding.gestureHintOverlay.alpha = 0f
-        binding.gestureHintOverlay.visibility = View.VISIBLE
-        binding.gestureHintOverlay.animate().alpha(1f).setDuration(160L).start()
-        prefs.edit().putBoolean(GESTURE_ONBOARDING_SHOWN, true).apply()
-        mainHandler.postDelayed({
-            binding.gestureHintOverlay.animate()
-                .alpha(0f)
-                .setDuration(260L)
-                .withEndAction { binding.gestureHintOverlay.visibility = View.GONE }
-                .start()
-        }, if (force) 6500L else 5200L)
-    }
-
-    private fun toggleHudHistogram() {
-        val enabled = !(proSettings.hudEnabled || proSettings.histogramEnabled)
-        proSettings = proSettings.copy(hudEnabled = enabled, histogramEnabled = enabled)
-        applySettingsToUi()
-        proSettings.save(this)
-    }
-
-    private fun pulseEdgeGlow(view: View) {
-        view.animate().cancel()
-        view.alpha = 0f
-        view.visibility = View.VISIBLE
-        view.animate()
-            .alpha(1f)
-            .setDuration(70L)
-            .withEndAction {
-                view.animate()
-                    .alpha(0f)
-                    .setDuration(180L)
-                    .withEndAction { view.visibility = View.GONE }
-                    .start()
-            }
-            .start()
-    }
-
-    private fun showEdgeGlow(view: View) {
-        view.animate().cancel()
-        view.alpha = 0.85f
-        view.visibility = View.VISIBLE
-    }
-
-    private fun hideEdgeGlows() {
-        listOf(binding.edgeGlowLeft, binding.edgeGlowRight, binding.edgeGlowTop, binding.edgeGlowBottom).forEach { glow ->
-            glow.animate().cancel()
-            glow.animate()
-                .alpha(0f)
-                .setDuration(120L)
-                .withEndAction { glow.visibility = View.GONE }
-                .start()
-        }
-    }
-
-    private fun edgeSizePx(width: Float, height: Float): Float {
-        return max(dp(42f), min(width, height) * 0.1f)
-    }
-
-    private fun haptic(type: Int) {
-        binding.root.performHapticFeedback(type)
-    }
-
-    private fun dp(value: Float): Float = value * resources.displayMetrics.density
-
-    private fun isPortraitUi(): Boolean =
-        pixelPortraitOnly || resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-
-    private fun buildPresetBar() {
-        val bar = binding.zoomPresetBar
-        val secondaryBar = binding.secondaryControlBar
-        bar.removeAllViews()
-        secondaryBar.removeAllViews()
-        presetButtons.clear()
-        mainZoomStops.forEach { preset ->
-            val btn = MaterialButton(
-                this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle
-            ).apply {
-                text = preset.label
-                setTextColor(0xFFFFFFFF.toInt())
-                textSize = 13f
-                insetTop = 0; insetBottom = 0
-                val dp = resources.displayMetrics.density
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    (34 * dp).toInt()
-                ).apply { marginEnd = (6 * dp).toInt() }
-                cornerRadius = (17 * dp).toInt()
-                setBackgroundColor(0x22FFFFFF)
-                setOnClickListener { animateZoomTo(preset.ratio) }
-            }
-            presetButtons.add(btn)
-            bar.addView(btn)
-        }
-        addToolButton(bar, "Rail") { advanceZoomRail(+1) }
-        addToolButton(bar, "←") { nudgeDigitalCrop(-1, 0) }
-        addToolButton(bar, "↑") { nudgeDigitalCrop(0, -1) }
-        addToolButton(bar, "•") { centerDigitalCrop() }
-        addToolButton(bar, "↓") { nudgeDigitalCrop(0, 1) }
-        addToolButton(bar, "→") { nudgeDigitalCrop(1, 0) }
-        addHoldToolButton(bar, getString(R.string.freeze_scope))
-        addToolButton(bar, "Heat") { toggleHeatHaze() }
-        addToolButton(bar, "Bracket") { startFocusSweepBracket() }
-        refreshPresetHighlight()
-    }
-
-    private fun addToolButton(bar: LinearLayout, label: String, action: () -> Unit): MaterialButton {
-        val dp = resources.displayMetrics.density
-        val targetBar = if (bar === binding.zoomPresetBar) binding.secondaryControlBar else bar
-        return MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-            text = label
-            setTextColor(0xFFFFFFFF.toInt())
-            textSize = 13f
-            insetTop = 0
-            insetBottom = 0
-            minWidth = 0
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                (34 * dp).toInt()
-            ).apply { marginEnd = (6 * dp).toInt() }
-            cornerRadius = (17 * dp).toInt()
-            setBackgroundColor(0x337C3AED)
-            setOnClickListener { action() }
-            targetBar.addView(this)
-        }
-    }
-
-    private fun addHoldToolButton(bar: LinearLayout, label: String): MaterialButton {
-        val button = addToolButton(bar, label) { showFreezeScope() }
-        button.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    showFreezeScope()
-                    true
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    hideFreezeScope()
-                    true
-                }
-                else -> false
-            }
-        }
-        return button
-    }
-
-    private fun refreshPresetHighlight() {
-        presetButtons.forEachIndexed { i, btn ->
-            val active = mainZoomStops.getOrNull(i)?.ratio?.let { abs(it - requestedZoom) < 0.05f } == true
-            if (active) { btn.setBackgroundColor(0xFFC4B5FD.toInt()); btn.setTextColor(0xFF111418.toInt()) }
-            else        { btn.setBackgroundColor(0x22FFFFFF);          btn.setTextColor(0xFFFFFFFF.toInt()) }
-        }
-    }
-
-    // ── Settings → UI ─────────────────────────────────────────────────────────
-
-    private fun applySettingsToUi() {
-        histogramEnabledForAnalyzer = proSettings.histogramEnabled
-        binding.nightOverlay.visibility   = if (proSettings.nightUiEnabled)   View.VISIBLE else View.GONE
-        binding.histogramView.visibility  = if (proSettings.histogramEnabled)  View.VISIBLE else View.GONE
-        binding.hudRow.visibility         = View.VISIBLE
-        binding.shakeMeterRow.visibility  = if (proSettings.antiShakeEnabled)  View.VISIBLE else View.GONE
-        binding.proModeBadge.visibility   = if (proSettings.manualMode)         View.VISIBLE else View.GONE
-        binding.gridOverlay.gridMode      = proSettings.gridMode
-        binding.gridButton.text = when (proSettings.gridMode) {
-            GridMode.NONE     -> getString(R.string.grid_off)
-            GridMode.THIRDS   -> "Thirds"
-            GridMode.SQUARE   -> "Square"
-            GridMode.DIAGONAL -> "Diagonal"
-        }
-        updateHud()
-    }
-
-    private fun updateHud() {
-        val autoMode = !proSettings.manualMode
-        binding.hudIso.text = if (autoMode) "Yes" else "No"
-        binding.hudShutter.text = if (autoMode) "Yes" else "No"
-        binding.hudWb.text = if (autoMode) "Yes" else "No"
-        val stateColor = if (autoMode) 0xFFC4B5FD.toInt() else 0xFFFFFFFF.toInt()
-        binding.hudIso.setTextColor(stateColor)
-        binding.hudShutter.setTextColor(stateColor)
-        binding.hudWb.setTextColor(stateColor)
-    }
-
-    // ── Camera startup ────────────────────────────────────────────────────────
-
-    private fun ensurePermissionAndStart() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED) startCamera()
-        else permissionLauncher.launch(Manifest.permission.CAMERA)
-    }
-
-    private fun startCamera() {
-        val future = ProcessCameraProvider.getInstance(this)
-        future.addListener({
-            if (isFinishing || isDestroyed || cameraExecutor.isShutdown) return@addListener
-            cameraProvider = try {
-                future.get()
-            } catch (e: Exception) {
-                Toast.makeText(this, getString(R.string.bind_failed, e.message), Toast.LENGTH_LONG).show()
-                return@addListener
-            }
-            lensOptions = buildLensOptions(cameraProvider ?: return@addListener)
-            if (lensOptions.isEmpty()) {
-                Toast.makeText(this, R.string.no_camera_found, Toast.LENGTH_LONG).show()
-                finish(); return@addListener
-            }
-            currentLensIndex = lensOptions.indexOfFirst { it.preferred }.takeIf { it >= 0 } ?: 0
-            bindSelectedCamera()
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun buildLensOptions(provider: ProcessCameraProvider): List<LensOption> {
-        val manager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        data class CameraCandidate(
-            val cameraId: String,
-            val facing: Int,
-            val maxFocal: Float,
-            val horizontalFovDeg: Float,
-            val verticalFovDeg: Float
-        )
-
-        val candidates = provider.availableCameraInfos.mapNotNull { info ->
-            val cameraInfo = Camera2CameraInfo.from(info)
-            val cameraId = cameraInfo.cameraId
-            val facing = cameraInfo.getCameraCharacteristic(CameraCharacteristics.LENS_FACING) ?: return@mapNotNull null
-            val characteristics = manager.getCameraCharacteristics(cameraId)
-            val maxFocal = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
-                ?.maxOrNull() ?: 0f
-            val sensorSize = characteristics.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
-            val horizontalFov = if (sensorSize != null && maxFocal > 0f) {
-                (2.0 * atan(sensorSize.width / (2.0 * maxFocal)) * 180.0 / PI).toFloat()
-            } else 0f
-            val verticalFov = if (sensorSize != null && maxFocal > 0f) {
-                (2.0 * atan(sensorSize.height / (2.0 * maxFocal)) * 180.0 / PI).toFloat()
-            } else 0f
-            CameraCandidate(cameraId, facing, maxFocal, horizontalFov, verticalFov)
-        }
-
-        val backOptions = candidates
-            .filter { it.facing == CameraCharacteristics.LENS_FACING_BACK }
-            .sortedByDescending { it.maxFocal }
-            .mapIndexed { index, candidate ->
-             val selector = CameraSelector.Builder()
-                 .addCameraFilter { infos ->
-                     infos.filter { Camera2CameraInfo.from(it).cameraId == candidate.cameraId }
-                 }.build()
-             val isTelephoto = index == 0
-             val label = if (isTelephoto) getString(R.string.lens_telephoto) else getString(R.string.lens_wide)
-             LensOption(
-                 label    = if (candidates.count { it.facing == CameraCharacteristics.LENS_FACING_BACK } > 1) "$label ${index + 1}" else label,
-                 selector = selector,
-                 facing = CameraCharacteristics.LENS_FACING_BACK,
-                 cameraId = candidate.cameraId,
-                 baseHorizontalFovDeg = candidate.horizontalFovDeg,
-                 baseVerticalFovDeg = candidate.verticalFovDeg,
-                 preferred = isTelephoto,
-                 telephoto = isTelephoto
-             )
-         }
-
-        val frontCandidates = candidates
-            .filter { it.facing == CameraCharacteristics.LENS_FACING_FRONT }
-            .sortedByDescending { it.maxFocal }
-
-        val frontOptions = frontCandidates.mapIndexed { index, candidate ->
-            val selector = CameraSelector.Builder()
-                .addCameraFilter { infos ->
-                    infos.filter { Camera2CameraInfo.from(it).cameraId == candidate.cameraId }
-                }.build()
-            LensOption(
-                label = if (frontCandidates.size > 1) "${getString(R.string.lens_front)} ${index + 1}" else getString(R.string.lens_front),
-                selector = selector,
-                facing = CameraCharacteristics.LENS_FACING_FRONT,
-                cameraId = candidate.cameraId,
-                baseHorizontalFovDeg = candidate.horizontalFovDeg,
-                baseVerticalFovDeg = candidate.verticalFovDeg,
-                preferred = backOptions.isEmpty() && index == 0,
-                telephoto = false
-            )
-        }
-
-        return backOptions + frontOptions
-    }
-
-    private fun bindSelectedCamera() {
-        if (isFinishing || isDestroyed || cameraExecutor.isShutdown) return
-        val provider     = cameraProvider ?: return
-        val selectedLens = lensOptions.getOrNull(currentLensIndex) ?: return
-        val rotation     = currentDisplayRotation()
-
-        val previewBuilder = Preview.Builder().setTargetRotation(rotation)
-        ProCameraController.applyToPreviewBuilder(previewBuilder, proSettings)
-
-        preview = previewBuilder.build().also {
-            it.surfaceProvider = binding.previewView.surfaceProvider
-        }
-
-        val captureBuilder = ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-            .setTargetRotation(rotation)
-        ProCameraController.applyToCapturBuilder(captureBuilder, proSettings)
-        imageCapture = captureBuilder.build()
-
-        val analysisResolution = ResolutionSelector.Builder()
-            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
-            .setResolutionStrategy(
-                ResolutionStrategy(
-                    Size(320, 240),
-                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
-                )
-            )
-            .build()
-
-        imageAnalysis = ImageAnalysis.Builder()
-            .setResolutionSelector(analysisResolution)
-            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-            .setTargetRotation(rotation)
-            .build()
-            .also { analysis ->
-                analysis.setAnalyzer(cameraExecutor) { image ->
-                    try {
-                        updateHistogram(image)
-                    } finally {
-                        image.close()
+                        CaptureMode.LIGHT -> startSequence(
+                            CaptureMode.LIGHT,
+                            SequenceConfig(settings.nightFrames.coerceIn(4, 12), 420L)
+                        )
+                        CaptureMode.TIMELAPSE -> startSequence(
+                            CaptureMode.TIMELAPSE,
+                            SequenceConfig(
+                                frames = (60 / settings.intervalSeconds.coerceAtLeast(1)).coerceIn(5, 120),
+                                intervalMs = settings.intervalSeconds * 1000L
+                            )
+                        )
+                        else -> setMode(target)
                     }
                 }
-            }
 
-        try {
-            provider.unbindAll()
-            camera = provider.bindToLifecycle(this, selectedLens.selector, preview, imageCapture, imageAnalysis)
-            val zoomState = camera?.cameraInfo?.zoomState?.value
-            minNativeZoom = zoomState?.minZoomRatio ?: 1f
-            nativeZoomCap = zoomState?.maxZoomRatio ?: 1f
-            baseHorizontalFovDeg = selectedLens.baseHorizontalFovDeg
-            baseVerticalFovDeg = selectedLens.baseVerticalFovDeg
-            lastAppliedNativeZoom = Float.NaN
-            pendingNativeZoom = null
-            nativeZoomInFlight = false
-            aimDriftXRad = 0f
-            aimDriftYRad = 0f
-            capabilities  = ProCameraController.queryCapabilities(camera!!)
-            updateUseCaseRotations(force = true)
-            applyZoomToPipeline()
-            bringControlUiToFront()
-            updateLensBadge(selectedLens)
-            torchEnabled = false
-            updateFlashlightButton()
-            if (proSettings.antiShakeEnabled) startAntiShake()
-        } catch (e: Exception) {
-            Toast.makeText(this, getString(R.string.bind_failed, e.message), Toast.LENGTH_LONG).show()
-        }
-    }
-
-    // ── Zoom ──────────────────────────────────────────────────────────────────
-
-    private fun updateHistogram(image: androidx.camera.core.ImageProxy) {
-        val now = SystemClock.uptimeMillis()
-        val lumaPlane = image.planes.firstOrNull() ?: return
-        if (histogramEnabledForAnalyzer && now - lastHistogramUpdateMs >= HISTOGRAM_FRAME_INTERVAL_MS) {
-            lastHistogramUpdateMs = now
-            binding.histogramView.updateFromLumaPlane(
-                buffer = lumaPlane.buffer,
-                rowStride = lumaPlane.rowStride,
-                pixelStride = lumaPlane.pixelStride,
-                width = image.width,
-                height = image.height
-            )
-        }
-        if (heatHazeEnabled && now - lastHeatHazeUpdateMs >= HEAT_HAZE_FRAME_INTERVAL_MS) {
-            lastHeatHazeUpdateMs = now
-            binding.heatHazeView.updateFromLumaPlane(
-                buffer = lumaPlane.buffer,
-                rowStride = lumaPlane.rowStride,
-                pixelStride = lumaPlane.pixelStride,
-                width = image.width,
-                height = image.height,
-                rotationDegrees = image.imageInfo.rotationDegrees
-            )
-        }
-        if (now - lastScopeFrameUpdateMs >= SCOPE_FRAME_INTERVAL_MS) {
-            lastScopeFrameUpdateMs = now
-            updateLatestScopeFrame(
-                buffer = lumaPlane.buffer,
-                rowStride = lumaPlane.rowStride,
-                pixelStride = lumaPlane.pixelStride,
-                width = image.width,
-                height = image.height,
-                rotationDegrees = image.imageInfo.rotationDegrees
-            )
-        }
-    }
-
-    private fun updateLatestScopeFrame(
-        buffer: java.nio.ByteBuffer,
-        rowStride: Int,
-        pixelStride: Int,
-        width: Int,
-        height: Int,
-        rotationDegrees: Int
-    ) {
-        val outW = 320
-        val outH = max(1, (height * outW / width.toFloat()).toInt())
-        val pixels = IntArray(outW * outH)
-        for (y in 0 until outH) {
-            val srcY = y * height / outH
-            val row = srcY * rowStride
-            for (x in 0 until outW) {
-                val srcX = x * width / outW
-                val luma = buffer.get(row + srcX * pixelStride).toInt() and 0xFF
-                pixels[y * outW + x] = (0xFF shl 24) or (luma shl 16) or (luma shl 8) or luma
-            }
-        }
-        val bitmap = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
-        bitmap.setPixels(pixels, 0, outW, 0, 0, outW, outH)
-        val displayBitmap = rotateBitmap(bitmap, rotationDegrees)
-        if (displayBitmap != bitmap) bitmap.recycle()
-        synchronized(scopeBitmapLock) {
-            latestScopeBitmap?.recycle()
-            latestScopeBitmap = displayBitmap
-            if (freezeScopeActive) {
-                mainHandler.post { refreshFreezeScopeFrame() }
-            }
-        }
-    }
-
-    private fun rotateBitmap(src: Bitmap, rotationDegrees: Int): Bitmap {
-        val normalized = ((rotationDegrees % 360) + 360) % 360
-        if (normalized == 0) return src
-        val matrix = android.graphics.Matrix().apply { postRotate(normalized.toFloat()) }
-        return Bitmap.createBitmap(src, 0, 0, src.width, src.height, matrix, true)
-    }
-
-    private fun animateZoomTo(target: Float) {
-        if (proSettings.zoomLocked) return
-        val from = requestedZoom
-        zoomAnimator.animateTo(from, target.coerceIn(1f, 100f)) { value ->
-            setZoomImmediately(value, syncSlider = true)
-        }
-    }
-
-    private fun setZoomImmediately(value: Float, syncSlider: Boolean) {
-        requestedZoom = value.coerceIn(1f, 100f)
-        if (syncSlider) syncZoomSlider(requestedZoom)
-        applyZoomToPipeline()
-    }
-
-    private fun syncZoomSlider(value: Float) {
-        val slider = binding.zoomSlider
-        val steppedValue = snapToSliderStep(value)
-        if (abs(slider.value - steppedValue) > 0.001f) {
-            slider.value = steppedValue
-        }
-    }
-
-    private fun snapToSliderStep(value: Float): Float {
-        val slider = binding.zoomSlider
-        val clamped = value.coerceIn(slider.valueFrom, slider.valueTo)
-        val step = slider.stepSize
-        if (step <= 0f) return clamped
-        val steps = ((clamped - slider.valueFrom) / step).roundToInt()
-        return (slider.valueFrom + steps * step).coerceIn(slider.valueFrom, slider.valueTo)
-    }
-
-    private fun applyZoomToPipeline() {
-        val nativeZoom    = requestedZoom.coerceIn(minNativeZoom, nativeZoomCap)
-        val digitalFactor = max(1f, requestedZoom / nativeZoom)
-        currentDigitalFactor = digitalFactor
-        requestNativeZoom(nativeZoom)
-        binding.previewView.scaleX = digitalFactor
-        binding.previewView.scaleY = digitalFactor
-        val maxShiftX = binding.previewView.width * (digitalFactor - 1f) / 2f
-        val maxShiftY = binding.previewView.height * (digitalFactor - 1f) / 2f
-        binding.previewView.translationX = -digitalCropOffsetX * maxShiftX
-        binding.previewView.translationY = -digitalCropOffsetY * maxShiftY
-        binding.extremeOverlay.updateCropOffset(digitalCropOffsetX, digitalCropOffsetY)
-        binding.extremeOverlay.updateZoomInfo(
-            requestedZoom,
-            currentHorizontalFovDeg(),
-            currentVerticalFovDeg()
-        )
-        updateZoomLabels()
-        refreshPresetHighlight()
-        updateExtremeOverlay()
-        updateCaptureStabilityUi()
-    }
-
-    private fun requestNativeZoom(nativeZoom: Float) {
-        val cam = camera ?: return
-        val zoom = nativeZoom.coerceIn(minNativeZoom, nativeZoomCap)
-        if (!nativeZoomInFlight && abs(zoom - lastAppliedNativeZoom) < ZOOM_EPSILON) return
-
-        pendingNativeZoom = zoom
-        if (nativeZoomInFlight) return
-        applyPendingNativeZoom(cam)
-    }
-
-    private fun applyPendingNativeZoom(cam: Camera) {
-        val zoom = pendingNativeZoom ?: return
-        pendingNativeZoom = null
-        nativeZoomInFlight = true
-
-        val future = cam.cameraControl.setZoomRatio(zoom)
-        future.addListener({
-            if (camera !== cam) return@addListener
-            try {
-                future.get()
-                lastAppliedNativeZoom = zoom
-            } catch (_: Exception) {
-                // Keep the UI responsive even if a device rejects an intermediate zoom ratio.
-            } finally {
-                nativeZoomInFlight = false
-                if (pendingNativeZoom != null && camera === cam) {
-                    applyPendingNativeZoom(cam)
+                override fun onPickLut() {
+                    lutPickerLauncher.launch(arrayOf("*/*"))
                 }
+
+                override fun onOpenSettings() = openSettings()
+
+                override fun onOpenGallery() = openGallery()
+
+                override fun onOpenPro() = openProPanel()
             }
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun currentHorizontalFovDeg(): Float {
-        return if (baseHorizontalFovDeg > 0f) baseHorizontalFovDeg / requestedZoom else 0f
-    }
-
-    private fun currentVerticalFovDeg(): Float {
-        return if (baseVerticalFovDeg > 0f) baseVerticalFovDeg / requestedZoom else 0f
-    }
-
-    private fun lockTargetAt(x: Float, y: Float) {
-        aimDriftXRad = 0f
-        aimDriftYRad = 0f
-        binding.extremeOverlay.lockTarget(x, y)
-        Toast.makeText(this, R.string.target_locked, Toast.LENGTH_SHORT).show()
-    }
-
-    private fun updateExtremeOverlay() {
-        val fovHrad = (currentHorizontalFovDeg().coerceAtLeast(0.05f) * PI / 180.0).toFloat()
-        val fovVrad = (currentVerticalFovDeg().coerceAtLeast(0.05f) * PI / 180.0).toFloat()
-        val dxPx = aimDriftXRad * binding.extremeOverlay.width / fovHrad
-        val dyPx = aimDriftYRad * binding.extremeOverlay.height / fovVrad
-        binding.extremeOverlay.updateDrift(dxPx, dyPx)
-        binding.extremeOverlay.updateStability(
-            level = shakeLevelForZoom(),
-            isStable = isStableForCapture(),
-            pendingCapture = settledCapturePending,
-            progress = settledCaptureProgress()
-        )
-    }
-
-    private fun nudgeDigitalCrop(dx: Int, dy: Int) {
-        if (currentDigitalFactor <= 1.01f) {
-            Toast.makeText(this, R.string.nudge_requires_digital_zoom, Toast.LENGTH_SHORT).show()
-            return
-        }
-        val step = (0.16f / currentDigitalFactor).coerceIn(0.025f, 0.08f)
-        digitalCropOffsetX = (digitalCropOffsetX + dx * step).coerceIn(-1f, 1f)
-        digitalCropOffsetY = (digitalCropOffsetY + dy * step).coerceIn(-1f, 1f)
-        applyZoomToPipeline()
-    }
-
-    private fun centerDigitalCrop() {
-        digitalCropOffsetX = 0f
-        digitalCropOffsetY = 0f
-        applyZoomToPipeline()
-    }
-
-    private fun showFreezeScope() {
-        freezeScopeActive = true
-        if (!refreshFreezeScopeFrame()) {
-            Toast.makeText(this, R.string.freeze_scope_wait, Toast.LENGTH_SHORT).show()
-            return
-        }
-        binding.freezeScopeView.visibility = View.VISIBLE
-    }
-
-    private fun hideFreezeScope() {
-        freezeScopeActive = false
-        binding.freezeScopeView.visibility = View.GONE
-        binding.freezeScopeView.setImageDrawable(null)
-        displayedFreezeBitmap?.recycle()
-        displayedFreezeBitmap = null
-    }
-
-    private fun refreshFreezeScopeFrame(): Boolean {
-        val bitmap = synchronized(scopeBitmapLock) { latestScopeBitmap?.copy(Bitmap.Config.ARGB_8888, false) }
-        if (bitmap == null) return false
-        val previous = displayedFreezeBitmap
-        displayedFreezeBitmap = bitmap
-        binding.freezeScopeView.setImageBitmap(bitmap)
-        previous?.recycle()
-        binding.freezeScopeView.visibility = View.VISIBLE
-        return true
-    }
-
-    private fun toggleHeatHaze() {
-        heatHazeEnabled = !heatHazeEnabled
-        binding.heatHazeView.visibility = if (heatHazeEnabled) View.VISIBLE else View.GONE
-        Toast.makeText(
-            this,
-            if (heatHazeEnabled) R.string.heat_haze_on else R.string.heat_haze_off,
-            Toast.LENGTH_SHORT
         ).show()
     }
 
-    private fun advanceZoomRail(direction: Int) {
-        val nearest = zoomRailStops.indices.minByOrNull { abs(zoomRailStops[it] - requestedZoom) } ?: 0
-        railIndex = (nearest + direction).floorMod(zoomRailStops.size)
-        zoomAnimator.speed = ZoomAnimator.Speed.CINEMATIC
-        animateZoomTo(zoomRailStops[railIndex])
-        zoomAnimator.speed = ZoomAnimator.Speed.SMOOTH
-    }
-
-    private fun stabilityThreshold(): Float {
-        return (0.19f / sqrt(requestedZoom.coerceAtLeast(1f))).coerceIn(0.018f, 0.12f)
-    }
-
-    private fun isStableForCapture(): Boolean {
-        return stableSinceMs != 0L && SystemClock.uptimeMillis() - stableSinceMs >= 180L
-    }
-
-    private fun shakeLevelForZoom(): Float {
-        return (gyroMagnitude / (stabilityThreshold() * 4f)).coerceIn(0f, 1f)
-    }
-
-    private fun settledCaptureProgress(): Float {
-        if (!settledCapturePending) return 0f
-        return ((SystemClock.uptimeMillis() - settledCaptureStartedMs).toFloat() / SETTLED_CAPTURE_MIN_DELAY_MS).coerceIn(0f, 1f)
-    }
-
-    private fun updateCaptureStabilityUi() {
-        val status = when {
-            settledCapturePending -> getString(R.string.stability_settling)
-            isStableForCapture() -> getString(R.string.stability_stable)
-            else -> getString(R.string.stability_shake)
-        }
-        binding.captureStatusText.text = status
-        binding.captureStatusText.visibility = View.VISIBLE
-        binding.captureStatusText.setTextColor(
-            when (status) {
-                getString(R.string.stability_stable) -> 0xFFC4B5FD.toInt()
-                getString(R.string.stability_settling) -> 0xFFDDDDDD.toInt()
-                else -> 0xFFFFD7A8.toInt()
+    private val lutPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        ioExecutor.execute {
+            val name = queryDisplayName(uri) ?: "imported_lut.cube"
+            val file = contentResolver.openInputStream(uri)?.use { input ->
+                com.example.zoomhundred.imaging.LutStore.importStream(filesDir, name, input)
             }
-        )
-        binding.captureButton.text = ""
-    }
-
-    private fun toggleZoomLock() {
-        proSettings = proSettings.copy(zoomLocked = !proSettings.zoomLocked)
-        if (proSettings.zoomLocked) {
-            binding.lockZoomButton.text = "Locked"
-            binding.zoomSlider.isEnabled = false
-            Toast.makeText(this, getString(R.string.zoom_locked, requestedZoom), Toast.LENGTH_SHORT).show()
-        } else {
-            binding.lockZoomButton.text = getString(R.string.lock_zoom)
-            binding.zoomSlider.isEnabled = true
-            Toast.makeText(this, R.string.zoom_unlocked, Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    // ── Grid ──────────────────────────────────────────────────────────────────
-
-    private fun cycleGrid() {
-        val next = when (proSettings.gridMode) {
-            GridMode.NONE     -> GridMode.THIRDS
-            GridMode.THIRDS   -> GridMode.SQUARE
-            GridMode.SQUARE   -> GridMode.DIAGONAL
-            GridMode.DIAGONAL -> GridMode.NONE
-        }
-        proSettings = proSettings.copy(gridMode = next)
-        applySettingsToUi()
-        proSettings.save(this)
-    }
-
-    // ── Lens switch ───────────────────────────────────────────────────────────
-
-    private fun switchLens() {
-        val backLensIndexes = lensOptions.withIndex()
-            .filter { it.value.facing == CameraCharacteristics.LENS_FACING_BACK }
-            .map { it.index }
-
-        if (backLensIndexes.isEmpty()) {
-            Toast.makeText(this, R.string.no_other_lens, Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        currentLensIndex = if (lensOptions.getOrNull(currentLensIndex)?.facing == CameraCharacteristics.LENS_FACING_FRONT) {
-            backLensIndexes.first()
-        } else {
-            val currentBackPosition = backLensIndexes.indexOf(currentLensIndex)
-            if (backLensIndexes.size <= 1) {
-                Toast.makeText(this, R.string.no_other_lens, Toast.LENGTH_SHORT).show()
-                return
+            mainHandler.post {
+                if (file == null) {
+                    toast("Could not read that .cube file")
+                } else {
+                    settings.lutName = file.name
+                    settings.save(this)
+                    toast("LUT imported: ${file.nameWithoutExtension}")
+                }
             }
-            backLensIndexes[(currentBackPosition + 1).floorMod(backLensIndexes.size)]
-        }
-        bindSelectedCamera()
-    }
-
-    private fun switchToFrontCamera() {
-        val frontIndex = lensOptions.indexOfFirst { it.facing == CameraCharacteristics.LENS_FACING_FRONT }
-        if (frontIndex < 0) {
-            Toast.makeText(this, R.string.no_front_camera, Toast.LENGTH_SHORT).show()
-            return
-        }
-        currentLensIndex = frontIndex
-        bindSelectedCamera()
-        Toast.makeText(this, R.string.front_camera_easter_egg, Toast.LENGTH_LONG).show()
-    }
-
-    private fun Int.floorMod(modulus: Int): Int = ((this % modulus) + modulus) % modulus
-
-    private fun toggleFlashlight() {
-        val cam = camera ?: return
-        if (!cam.cameraInfo.hasFlashUnit()) {
-            torchEnabled = false
-            updateFlashlightButton()
-            Toast.makeText(this, R.string.flash_unavailable, Toast.LENGTH_SHORT).show()
-            return
-        }
-        torchEnabled = !torchEnabled
-        cam.cameraControl.enableTorch(torchEnabled)
-        updateFlashlightButton()
-    }
-
-    private fun updateFlashlightButton() {
-        val hasFlash = camera?.cameraInfo?.hasFlashUnit() == true
-        binding.flashlightButton.isEnabled = hasFlash
-        binding.flashlightButton.alpha = if (hasFlash) 1f else 0.45f
-        binding.flashlightButton.text = if (torchEnabled && hasFlash) getString(R.string.flash_on) else getString(R.string.flash_off)
-    }
-
-    private fun openAppInfo() {
-        startActivity(Intent(this, AppInfoActivity::class.java))
-    }
-
-    // ── Capture ───────────────────────────────────────────────────────────────
-
-    private fun onCaptureClicked() {
-        if (settledCapturePending) {
-            cancelSettledCapture()
-            Toast.makeText(this, R.string.capture_cancelled, Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (proSettings.antiShakeEnabled && !antiShakeArmed) {
-            Toast.makeText(this, "Hold still — waiting for stable frame…", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (requestedZoom >= EXTREME_CAPTURE_ZOOM && !isStableForCapture()) {
-            beginSettledCapture()
-            return
-        }
-        capturePhoto()
-    }
-
-    private fun beginSettledCapture() {
-        settledCapturePending = true
-        settledCaptureStartedMs = SystemClock.uptimeMillis()
-        updateCaptureStabilityUi()
-        updateExtremeOverlay()
-        Toast.makeText(this, R.string.capture_waiting_for_stillness, Toast.LENGTH_SHORT).show()
-        mainHandler.removeCallbacks(settledCaptureRunnable)
-        mainHandler.post(settledCaptureRunnable)
-    }
-
-    private fun updateSettledCapture() {
-        if (!settledCapturePending) return
-        val elapsed = SystemClock.uptimeMillis() - settledCaptureStartedMs
-        updateExtremeOverlay()
-        updateCaptureStabilityUi()
-        if ((elapsed >= SETTLED_CAPTURE_MIN_DELAY_MS && isStableForCapture()) || elapsed >= SETTLED_CAPTURE_TIMEOUT_MS) {
-            settledCapturePending = false
-            updateExtremeOverlay()
-            updateCaptureStabilityUi()
-            capturePhoto()
-        } else {
-            mainHandler.postDelayed(settledCaptureRunnable, 33L)
         }
     }
 
-    private fun cancelSettledCapture() {
-        settledCapturePending = false
-        mainHandler.removeCallbacks(settledCaptureRunnable)
-        updateCaptureStabilityUi()
-        updateExtremeOverlay()
+    private fun queryDisplayName(uri: Uri): String? = try {
+        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+        }
+    } catch (_: Exception) {
+        null
     }
 
-    private fun playShutterClick(volume: Int) {
-        val safeVolume = volume.coerceIn(0, 100)
-        if (safeVolume <= 0) return
+    private fun openProPanel() {
+        val lens = currentLens ?: return
+        ProPanelSheet(
+            host = this,
+            initial = pro.copyOf(),
+            settings = settings,
+            lens = lens,
+            capabilities = capabilities,
+            callbacks = object : ProPanelSheet.Callbacks {
+                override fun onProChanged(updated: ProSettings, commit: Boolean) {
+                    val exposureChanged = updated.manualMode != pro.manualMode ||
+                        updated.isoIndex != pro.isoIndex || updated.shutterIndex != pro.shutterIndex
+                    pro = updated
+                    pro.save(this@MainActivity)
+                    binding.proModeBadge.visibility =
+                        if (pro.manualMode || mode == CaptureMode.PRO) View.VISIBLE else View.GONE
+                    engine.applySessionOptions(pro, lens, displayRotation(), videoConfig())
+                    updateHud()
+                    if (commit && exposureChanged && engine.isBound) bindCamera()
+                }
+
+                override fun onMonitoringChanged(
+                    histogram: Boolean,
+                    peaking: Boolean,
+                    zebra: Boolean,
+                    level: Boolean
+                ) {
+                    settings.histogramEnabled = histogram
+                    settings.peakingEnabled = peaking
+                    settings.zebraEnabled = zebra
+                    settings.levelEnabled = level
+                    monitorMode = when {
+                        peaking -> 2
+                        zebra -> 3
+                        histogram -> 1
+                        else -> 0
+                    }
+                    settings.save(this@MainActivity)
+                    applySettingsToUi()
+                }
+            }
+        ).show()
+    }
+
+    private fun openSettings() {
+        startActivity(Intent(this, SettingsActivity::class.java))
+    }
+
+    private fun openGallery() {
+        startActivity(Intent(this, GalleryActivity::class.java))
+    }
+
+    // ── Media & misc helpers ──────────────────────────────────────────────────
+
+    private fun refreshThumbnail() {
+        ioExecutor.execute {
+            val bitmap = try {
+                val latest = ImageStore.latestPhoto(contentResolver, settings.saveSubfolder)
+                latest?.let {
+                    runCatching { contentResolver.loadThumbnail(it.uri, Size(160, 160), null) }.getOrNull()
+                }
+            } catch (error: Throwable) {
+                CrashGuard.record(this, "thumbnail", error)
+                null
+            }
+            mainHandler.post {
+                if (bitmap != null) {
+                    binding.thumbnailView.setImageBitmap(bitmap)
+                    binding.thumbnailView.alpha = 1f
+                } else {
+                    binding.thumbnailView.setImageResource(R.drawable.ic_gallery)
+                    binding.thumbnailView.alpha = 0.7f
+                }
+            }
+        }
+    }
+
+    private fun playShutterSound() {
+        if (!settings.shutterSound || settings.shutterVolume <= 0) return
         try {
-            val tone = ToneGenerator(AudioManager.STREAM_MUSIC, safeVolume)
-            tone.startTone(ToneGenerator.TONE_PROP_BEEP2, 55)
-            mainHandler.postDelayed({ tone.release() }, 120L)
+            val tone = ToneGenerator(AudioManager.STREAM_MUSIC, settings.shutterVolume.coerceIn(0, 100))
+            tone.startTone(ToneGenerator.TONE_PROP_BEEP2, 45)
+            mainHandler.postDelayed({ tone.release() }, 140L)
         } catch (_: RuntimeException) {
-            // Sound hardware can be unavailable transiently; capture should continue.
+            // No sound hardware: capture should still work.
         }
     }
 
-    private fun capturePhoto() {
-        val capture = imageCapture ?: return
-        updateUseCaseRotations()
-        val captureZoom     = requestedZoom
-        val nativeAtCapture = min(captureZoom, nativeZoomCap)
-        val captureCropX    = digitalCropOffsetX
-        val captureCropY    = digitalCropOffsetY
-        val captureIso      = if (proSettings.manualMode) ProSettings.ISO_VALUES[proSettings.isoIndex] else null
-        val captureSS       = if (proSettings.manualMode) ProSettings.SHUTTER_VALUES[proSettings.shutterIndex] else null
-        val playShutterSound = proSettings.shutterSoundEnabled
-        val shutterVolume = proSettings.shutterSoundVolume
-        val shouldPostProcess = proSettings.zoomPostProcessEnabled && captureZoom >= POST_PROCESS_MIN_ZOOM
-        val postProcessStrength = proSettings.zoomPostProcessStrength
-        val captureOutputFormat = proSettings.outputFormat
-        val output = createOutputOptions(captureZoom)
-
-        if (playShutterSound) playShutterClick(shutterVolume)
-        capture.takePicture(output, cameraExecutor, object : ImageCapture.OnImageSavedCallback {
-            override fun onImageSaved(result: ImageCapture.OutputFileResults) {
-                val uri = result.savedUri ?: return
-                val digitalFactor = max(1f, captureZoom / nativeAtCapture)
-                if (digitalFactor > 1f) applyDigitalCrop(uri, digitalFactor, captureCropX, captureCropY)
-                if (shouldPostProcess) {
-                    try {
-                        ExtremeZoomPostProcessor.process(
-                            contentResolver,
-                            uri,
-                            captureOutputFormat,
-                            postProcessStrength
-                        )
-                    } catch (_: Exception) {
-                        mainHandler.post {
-                            Toast.makeText(this@MainActivity, R.string.post_process_failed, Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                }
-                ExifUtils.writeProMetadata(
-                    contentResolver, uri,
-                    zoomRatio  = captureZoom,
-                    nativeZoom = nativeAtCapture,
-                    iso        = captureIso,
-                    shutterNs  = captureSS,
-                    stripGps   = proSettings.stripGpsExif
-                )
-                mainHandler.post {
-                    Toast.makeText(this@MainActivity, getString(R.string.photo_saved, captureZoom), Toast.LENGTH_SHORT).show()
-                    antiShakeArmed = false
-                }
-            }
-
-            override fun onError(exception: ImageCaptureException) {
-                mainHandler.post {
-                    Toast.makeText(this@MainActivity, getString(R.string.capture_failed, exception.message), Toast.LENGTH_LONG).show()
-                }
-            }
-        })
+    private fun haptic(type: Int) {
+        if (!settings.hapticsEnabled) return
+        binding.root.performHapticFeedback(type)
     }
 
-    private fun createOutputOptions(zoom: Float): ImageCapture.OutputFileOptions {
-        val isWebp = proSettings.outputFormat == OutputFormat.WEBP
-        val ext  = if (isWebp) "webp" else "jpg"
-        val mime = if (isWebp) "image/webp" else "image/jpeg"
-        val name = "Open100x_${zoom.toInt()}x_${System.currentTimeMillis()}.$ext"
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, name)
-            put(MediaStore.Images.Media.MIME_TYPE, mime)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/Open100x")
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    // ── Failure reporting ─────────────────────────────────────────────────────
+
+    /**
+     * Rendered when the launch path itself failed (inflation, settings, sensors).
+     * The screen is built in code so it cannot depend on the very resources that
+     * may have broken, and it always offers a copyable trace.
+     */
+    private fun showStartupFailure(error: Throwable) {
+        val detail = CrashGuard.describe(this, error)
+        val body = TextView(this).apply {
+            setTextColor(0xFFEDEDF2.toInt())
+            textSize = 12f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            text = "Open 100x could not start.\n\n" +
+                error.javaClass.name + ": " + (error.message ?: "no message") + "\n\n" +
+                "Copy this report and send it so the cause can be fixed.\n\n" + detail
         }
-        return ImageCapture.OutputFileOptions.Builder(
-            contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values
-        ).build()
-    }
-
-    // ── Pro settings sheet ────────────────────────────────────────────────────
-
-    private fun startFocusSweepBracket() {
-        val cam = camera ?: return
-        if (focusSweepRunning) return
-        val capture = imageCapture ?: return
-        val minFocusDistance = Camera2CameraInfo.from(cam.cameraInfo)
-            .getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
-        if (minFocusDistance <= 0f) {
-            Toast.makeText(this, R.string.focus_sweep_unavailable, Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        focusSweepRunning = true
-        Toast.makeText(this, R.string.focus_sweep_started, Toast.LENGTH_SHORT).show()
-        val farSweep = floatArrayOf(
-            0f,
-            minFocusDistance * 0.02f,
-            minFocusDistance * 0.05f,
-            minFocusDistance * 0.09f,
-            minFocusDistance * 0.14f
-        )
-        captureFocusSweepFrame(capture, farSweep, 0)
-    }
-
-    private fun captureFocusSweepFrame(capture: ImageCapture, distances: FloatArray, index: Int) {
-        if (index >= distances.size) {
-            restoreAutofocusAfterSweep()
-            Toast.makeText(this, R.string.focus_sweep_done, Toast.LENGTH_SHORT).show()
-            return
-        }
-        applyFocusDistance(distances[index]) {
-            mainHandler.postDelayed({
-                val output = createOutputOptions(requestedZoom)
-                capture.takePicture(output, cameraExecutor, object : ImageCapture.OnImageSavedCallback {
-                    override fun onImageSaved(result: ImageCapture.OutputFileResults) {
-                        mainHandler.post { captureFocusSweepFrame(capture, distances, index + 1) }
-                    }
-
-                    override fun onError(exception: ImageCaptureException) {
-                        mainHandler.post { captureFocusSweepFrame(capture, distances, index + 1) }
-                    }
-                })
-            }, 120L)
-        }
-    }
-
-    private fun applyFocusDistance(distance: Float, onApplied: () -> Unit) {
-        val cam = camera ?: return
-        val options = CaptureRequestOptions.Builder()
-            .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
-            .setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, distance)
-            .build()
-        val future = Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(options)
-        future.addListener({ onApplied() }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun restoreAutofocusAfterSweep() {
-        val cam = camera
-        focusSweepRunning = false
-        if (cam == null) return
-        val options = CaptureRequestOptions.Builder()
-            .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
-            .build()
-        Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(options)
-    }
-
-    private fun openProSettings() {
-        // Snapshot settings before opening
-        val settingsBeforeOpen = proSettings.copy()
-        val sheet = ProSettingsSheet().apply {
-            settings     = proSettings.copy()
-            capabilities = this@MainActivity.capabilities
-            onSettingsChanged = { newSettings ->
-                val rebindNeeded = newSettings.manualMode    != proSettings.manualMode    ||
-                                   newSettings.isoIndex      != proSettings.isoIndex      ||
-                                   newSettings.shutterIndex  != proSettings.shutterIndex  ||
-                                   newSettings.wbMode        != proSettings.wbMode
-                proSettings = newSettings
-                applySettingsToUi()
-                proSettings.save(this@MainActivity)
-                if (rebindNeeded) bindSelectedCamera()
-                if (newSettings.antiShakeEnabled) startAntiShake() else antiShake.stop()
+        val copy = android.widget.Button(this).apply {
+            text = "Copy report"
+            setOnClickListener {
+                copyToClipboard(detail)
+                toast("Report copied")
             }
         }
-        sheet.show(supportFragmentManager, ProSettingsSheet.TAG)
-    }
-
-    // ── Anti-shake ────────────────────────────────────────────────────────────
-
-    private fun startAntiShake() {
-        if (!antiShake.isAvailable) return
-        antiShake.stop()
-        antiShake.onShakeLevel = { level ->
-            binding.shakeMeter.level = level
-            binding.shakeMeterLabel.text = if (level < 0.2f)
-                getString(R.string.anti_shake_ready) else getString(R.string.anti_shake_wait)
+        val retry = android.widget.Button(this).apply {
+            text = "Retry"
+            setOnClickListener { recreate() }
         }
-        antiShake.onStable = {
-            antiShakeArmed = true
-            binding.shakeMeterLabel.text = getString(R.string.anti_shake_ready)
+        val buttons = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            addView(copy)
+            addView(retry)
         }
-        antiShake.start(threshold = proSettings.antiShakeThreshold, quietWindowMs = 150L)
-    }
-
-    // ── Labels ────────────────────────────────────────────────────────────────
-
-    private fun updateLensBadge(lens: LensOption) {
-        binding.lensBadgeText.text = if (lens.telephoto)
-            getString(R.string.badge_telephoto_enabled, lens.label)
-        else
-            getString(R.string.badge_standard_lens, lens.label)
-    }
-
-    private fun updateZoomLabels() {
-        binding.zoomValueText.text  = getString(R.string.zoom_ratio_label, requestedZoom)
-        binding.zoomDetailText.text = ""
-        binding.zoomDetailText.visibility = View.GONE
-    }
-
-    // ── Digital crop ──────────────────────────────────────────────────────────
-
-    private fun applyDigitalCrop(uri: android.net.Uri, digitalFactor: Float, cropOffsetX: Float, cropOffsetY: Float) {
-        val source = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } ?: return
-        val exifOrientation = contentResolver.openInputStream(uri)?.use { inp ->
-            ExifInterface(inp).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-        } ?: ExifInterface.ORIENTATION_NORMAL
-
-        val oriented = rotateBitmapForExif(source, exifOrientation)
-        if (oriented != source) source.recycle()
-
-        val srcW  = oriented.width
-        val srcH  = oriented.height
-        val cropW = (srcW / digitalFactor).toInt().coerceAtLeast(1)
-        val cropH = (srcH / digitalFactor).toInt().coerceAtLeast(1)
-        val maxLeft = (srcW - cropW).coerceAtLeast(0)
-        val maxTop = (srcH - cropH).coerceAtLeast(0)
-        val left  = ((maxLeft / 2f) + cropOffsetX.coerceIn(-1f, 1f) * (maxLeft / 2f)).toInt().coerceIn(0, maxLeft)
-        val top   = ((maxTop / 2f) + cropOffsetY.coerceIn(-1f, 1f) * (maxTop / 2f)).toInt().coerceIn(0, maxTop)
-
-        val cropped = Bitmap.createBitmap(oriented, left, top, cropW, cropH)
-        val scaled  = Bitmap.createScaledBitmap(cropped, srcW, srcH, true)
-        oriented.recycle(); cropped.recycle()
-
-        val fmt = if (proSettings.outputFormat == OutputFormat.WEBP) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
-            else @Suppress("DEPRECATION") Bitmap.CompressFormat.WEBP
-        } else Bitmap.CompressFormat.JPEG
-        val quality = if (proSettings.outputFormat == OutputFormat.WEBP) 90 else 95
-
-        contentResolver.openOutputStream(uri, "wt")?.use { scaled.compress(fmt, quality, it) }
-        contentResolver.openFileDescriptor(uri, "rw")?.use { fd ->
-            ExifInterface(fd.fileDescriptor).apply {
-                setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
-                saveAttributes()
-            }
+        val scroll = android.widget.ScrollView(this).apply { addView(body) }
+        val root = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setBackgroundColor(0xFF07080A.toInt())
+            addView(buttons, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+            addView(scroll, android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+            ))
         }
-        scaled.recycle()
+        setContentView(root)
     }
 
-    private fun rotateBitmapForExif(src: Bitmap, orientation: Int): Bitmap {
-        val m = android.graphics.Matrix().apply {
-            when (orientation) {
-                ExifInterface.ORIENTATION_ROTATE_90  -> postRotate(90f)
-                ExifInterface.ORIENTATION_ROTATE_180 -> postRotate(180f)
-                ExifInterface.ORIENTATION_ROTATE_270 -> postRotate(270f)
-                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> postScale(-1f, 1f)
-                ExifInterface.ORIENTATION_FLIP_VERTICAL   -> postScale(1f, -1f)
-                ExifInterface.ORIENTATION_TRANSPOSE  -> { postScale(-1f, 1f); postRotate(270f) }
-                ExifInterface.ORIENTATION_TRANSVERSE -> { postScale(-1f, 1f); postRotate(90f) }
-                else -> return src
-            }
-        }
-        return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
-    }
-
-    // ── Orientation ───────────────────────────────────────────────────────────
-
-    private fun createOrientationListener() = object : OrientationEventListener(this) {
-        override fun onOrientationChanged(orientation: Int) {
-            if (pixelPortraitOnly) return
-            if (orientation == ORIENTATION_UNKNOWN) return
-            queueUseCaseRotationUpdate()
+    private fun copyToClipboard(text: String) {
+        runCatching {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Open 100x report", text))
         }
     }
 
-    private fun queueUseCaseRotationUpdate() {
-        if (pixelPortraitOnly) return
-        if (rotationUpdateQueued || isFinishing || isDestroyed) return
-        rotationUpdateQueued = true
-        mainHandler.post {
-            rotationUpdateQueued = false
-            updateUseCaseRotations()
-        }
+    private fun formatDuration(ms: Long): String {
+        val totalSeconds = (ms / 1000).coerceAtLeast(0)
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return String.format(java.util.Locale.US, "%02d:%02d", minutes, seconds)
     }
 
-    private fun updateUseCaseRotations(force: Boolean = false) {
-        if (isFinishing || isDestroyed) return
-        if (pixelPortraitOnly && !force) return
-        val r = currentDisplayRotation()
-        if (!force && r == lastTargetRotation) return
-        lastTargetRotation = r
+    private fun displayRotation(): Int {
+        if (!::binding.isInitialized) return Surface.ROTATION_0
+        return binding.previewView.display?.rotation ?: Surface.ROTATION_0
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // ROOT CAUSE of "the app does not open" (OPPO CPH2731 / Android 16, SDK 36):
+        // this callback is dispatched *during* super.onCreate(), before the view hierarchy
+        // is inflated and before settings are loaded. Touching `binding` here threw
+        // UninitializedPropertyAccessException on every single launch.
+        if (!uiReady || !::binding.isInitialized || !::settings.isInitialized) return
+        if (!hasFocus) return
         try {
-            preview?.targetRotation      = r
-            imageCapture?.targetRotation = r
-            imageAnalysis?.targetRotation = r
-            binding.heatHazeView.invalidate()
-            if (freezeScopeActive) refreshFreezeScopeFrame()
-        } catch (e: IllegalStateException) {
-            // Rotation can arrive while Pixel devices are tearing down/recreating the
-            // CameraX graph. The next attach or orientation callback will re-apply it.
+            updateAspectGuide()
+            updateLoupeSource()
+        } catch (error: Throwable) {
+            CrashGuard.record(this, "window focus", error)
         }
     }
+}
 
-    @Suppress("DEPRECATION")
-    private fun currentDisplayRotation() =
-        if (pixelPortraitOnly) Surface.ROTATION_0
-        else binding.previewView.display?.rotation ?: windowManager.defaultDisplay?.rotation ?: Surface.ROTATION_0
+// ── Small view extensions used above ─────────────────────────────────────────
 
-    // ── Data class ────────────────────────────────────────────────────────────
-
-    private data class LensOption(
-        val label: String,
-        val selector: CameraSelector,
-        val facing: Int,
-        val cameraId: String,
-        val baseHorizontalFovDeg: Float,
-        val baseVerticalFovDeg: Float,
-        val preferred: Boolean,
-        val telephoto: Boolean
-    )
+private fun View.visibleIf(condition: Boolean) {
+    visibility = if (condition) View.VISIBLE else View.GONE
 }

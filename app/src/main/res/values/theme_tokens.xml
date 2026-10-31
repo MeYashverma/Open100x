@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Shared typography styles: neutral sans, tuned tracking, tabular numerals. -->
+    <style name="Text.Micro" parent="">
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:letterSpacing">0.12</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+    <style name="Text.Label" parent="">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:letterSpacing">0.04</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+    <style name="Text.Body" parent="">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+    <style name="Text.Title" parent="">
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">0.01</item>
+    </style>
+    <style name="Text.Readout" parent="">
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:fontFeatureSettings">tnum</item>
+    </style>
+</resources>

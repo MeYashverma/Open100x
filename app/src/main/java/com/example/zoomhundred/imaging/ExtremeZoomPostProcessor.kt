@@ -7,6 +7,7 @@ import android.graphics.Matrix
 import android.net.Uri
 import android.os.Build
 import androidx.exifinterface.media.ExifInterface
+import com.example.zoomhundred.imaging.BitmapOps
 import com.example.zoomhundred.model.OutputFormat
 import kotlin.math.max
 import kotlin.math.min
@@ -15,6 +16,16 @@ import kotlin.math.sqrt
 object ExtremeZoomPostProcessor {
 
     private const val MAX_OUTPUT_PIXELS = 24_000_000
+
+    /**
+     * Public entry point for the in-memory pipeline used by [PostCapture].
+     * Returns a new bitmap; the caller owns both bitmaps.
+     */
+    fun enhanceBitmap(src: Bitmap, strengthPercent: Int): Bitmap {
+        val strength = strengthPercent.coerceIn(0, 100) / 100f
+        if (strength <= 0f) return src.copy(Bitmap.Config.ARGB_8888, true)
+        return enhance(src, strength)
+    }
 
     fun process(
         contentResolver: ContentResolver,
@@ -26,9 +37,7 @@ object ExtremeZoomPostProcessor {
         if (sliderStrength <= 0f) return
 
         val source = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } ?: return
-        val exifOrientation = contentResolver.openInputStream(uri)?.use { input ->
-            ExifInterface(input).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-        } ?: ExifInterface.ORIENTATION_NORMAL
+        val exifOrientation = BitmapOps.readExifOrientation(contentResolver, uri)
 
         val oriented = rotateBitmapForExif(source, exifOrientation)
         if (oriented != source) source.recycle()

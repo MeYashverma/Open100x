@@ -2,17 +2,17 @@ name: Android CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
-    name: Build debug APK
+    name: Build, test and package
     runs-on: ubuntu-latest
 
     steps:
@@ -42,11 +42,58 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee -a build.log
 
-      - name: Upload debug APK
+      - name: Assemble debug APK
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee -a build.log
+
+      - name: Compile instrumentation tests
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebugAndroidTest --stacktrace 2>&1 | tee -a build.log
+
+      - name: Assemble release APK (minified)
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee -a build.log
+
+      - name: Collect APKs
+        if: always()
+        run: |
+          mkdir -p artifacts
+          find app/build/outputs/apk -name "*.apk" -exec cp {} artifacts/ \; || true
+          ls -la artifacts || true
+
+      - name: Upload APKs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: open100x-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: open100x-apks
+          path: artifacts/*.apk
+          if-no-files-found: warn
+
+      - name: Upload unit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: open100x-unit-test-report
+          path: app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: ignore
+
+      - name: Publish build log on failure
+        if: failure()
+        run: |
+          tail -n 4000 build.log > build-tail.log || echo "no build log" > build-tail.log
+          mkdir -p /tmp/ci && cd /tmp/ci
+          cp "$GITHUB_WORKSPACE/build-tail.log" build.log
+          git init -q -b ci-logs
+          git add build.log
+          git -c user.email=ci@users.noreply.github.com -c user.name="CI" commit -q -m "ci build log"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-logs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

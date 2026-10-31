@@ -19,8 +19,8 @@ android {
         applicationId = "com.example.zoomhundred"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 9
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -63,6 +63,10 @@ android {
         viewBinding = true
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     dependenciesInfo {
         includeInApk = false
         includeInBundle = false
@@ -88,4 +92,11 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.4.1")
     implementation("androidx.camera:camera-view:1.4.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 }

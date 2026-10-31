@@ -12,30 +12,54 @@
         android:required="false" />
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
+        android:name=".Open100xApp"
         android:allowBackup="false"
         android:fullBackupContent="false"
+        android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
         android:theme="@style/Theme.ZoomHundred">
+
         <activity
             android:name=".AppInfoActivity"
             android:exported="false"
-            android:screenOrientation="fullSensor" />
+            android:screenOrientation="fullSensor"
+            android:theme="@style/Theme.ZoomHundred" />
 
         <activity
-            android:name=".MainActivity"
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:screenOrientation="fullSensor"
+            android:theme="@style/Theme.ZoomHundred" />
+
+        <activity
+            android:name=".GalleryActivity"
+            android:exported="false"
+            android:screenOrientation="fullSensor"
+            android:theme="@style/Theme.ZoomHundred" />
+
+        <!-- Launcher entry: starts MainActivity, or shows the crash report in safe mode. -->
+        <activity
+            android:name=".LauncherActivity"
             android:exported="true"
-            android:screenOrientation="fullSensor">
+            android:theme="@style/Theme.ZoomHundred">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:screenOrientation="fullSensor"
+            android:theme="@style/Theme.ZoomHundred.Camera" />
     </application>
 
 </manifest>

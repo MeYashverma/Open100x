@@ -1,27 +1,115 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.ZoomHundred" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="Theme.ZoomHundred" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorPrimaryDark">@color/ink</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="colorSecondary">@color/accent</item>
+        <item name="android:windowBackground">@color/ink</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/black</item>
-        <item name="bottomSheetDialogTheme">@style/Widget.ZoomHundred.BottomSheet</item>
+        <item name="android:navigationBarColor">@color/ink</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="bottomSheetDialogTheme">@style/Theme.ZoomHundred.BottomSheet</item>
+        <item name="materialAlertDialogTheme">@style/Theme.ZoomHundred.Dialog</item>
     </style>
 
-    <style name="Widget.ZoomHundred.BottomSheet" parent="ThemeOverlay.MaterialComponents.BottomSheetDialog">
+    <!-- Full-screen chrome-free camera activity (edge to edge, no dim). -->
+    <style name="Theme.ZoomHundred.Camera" parent="Theme.ZoomHundred">
+        <item name="android:windowBackground">@color/ink</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
+    <style name="Theme.ZoomHundred.Sheet" parent="Theme.ZoomHundred">
+        <item name="android:windowBackground">@color/ink</item>
+    </style>
+
+    <style name="Theme.ZoomHundred.BottomSheet" parent="ThemeOverlay.MaterialComponents.BottomSheetDialog">
         <item name="bottomSheetStyle">@style/Widget.ZoomHundred.BottomSheetModal</item>
+        <item name="android:navigationBarColor">@color/surface_1</item>
     </style>
 
     <style name="Widget.ZoomHundred.BottomSheetModal" parent="Widget.MaterialComponents.BottomSheet.Modal">
-        <item name="backgroundTint">@color/bar_black</item>
-        <item name="android:backgroundTint">@color/bar_black</item>
+        <item name="backgroundTint">@color/surface_1</item>
+        <item name="android:backgroundTint">@color/surface_1</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.ZoomHundred.Sheet</item>
     </style>
 
+    <style name="ShapeAppearance.ZoomHundred.Sheet" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">@dimen/radius_l</item>
+        <item name="cornerSizeTopRight">@dimen/radius_l</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+
+    <style name="Theme.ZoomHundred.Dialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <item name="colorSurface">@color/surface_2</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="buttonBarPositiveButtonStyle">?attr/materialButtonStyle</item>
+    </style>
+
+
+    <!-- Plain white glyph on a 40dp touch target. No pill, no border: stock-camera chrome. -->
+    <style name="Widget.ZoomHundred.GhostIcon" parent="">
+        <item name="android:layout_width">40dp</item>
+        <item name="android:layout_height">40dp</item>
+        <item name="android:padding">9dp</item>
+        <item name="android:scaleType">fitCenter</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="tint">@color/icon_tint</item>
+    </style>
+
+    <!-- Icon control: circular, 44dp, monochrome. -->
+    <style name="Widget.ZoomHundred.IconButton" parent="">
+        <item name="android:layout_width">@dimen/control_size</item>
+        <item name="android:layout_height">@dimen/control_size</item>
+        <item name="android:background">@drawable/bg_control_round</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:scaleType">fitCenter</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <style name="Widget.ZoomHundred.IconButtonSmall" parent="Widget.ZoomHundred.IconButton">
+        <item name="android:layout_width">@dimen/control_size_small</item>
+        <item name="android:layout_height">@dimen/control_size_small</item>
+        <item name="android:padding">8dp</item>
+    </style>
+
+    <!-- Text chip used for zoom presets and mode-adjacent toggles. -->
+    <style name="Widget.ZoomHundred.Chip" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">@dimen/chip_height</item>
+        <item name="android:minWidth">@dimen/chip_height</item>
+        <item name="android:gravity">center</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:background">@drawable/bg_chip_selector</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">@dimen/text_label</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+    </style>
+
+    <!-- Legacy styles kept so existing layouts/classes still resolve. -->
     <style name="Widget.ZoomHundred.PresetButton" parent="Widget.MaterialComponents.Button.OutlinedButton">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">38dp</item>
         <item name="android:layout_marginEnd">6dp</item>
         <item name="android:minWidth">0dp</item>
         <item name="android:minHeight">0dp</item>
-        <item name="android:textColor">@android:color/white</item>
+        <item name="android:textColor">@color/text_primary</item>
         <item name="android:textSize">13sp</item>
         <item name="android:paddingStart">12dp</item>
         <item name="android:paddingEnd">12dp</item>
@@ -34,14 +122,14 @@
     </style>
 
     <style name="Widget.ZoomHundred.PresetButtonActive" parent="Widget.ZoomHundred.PresetButton">
-        <item name="backgroundTint">#FFFFFFFF</item>
-        <item name="android:textColor">#FF111418</item>
-        <item name="strokeColor">#FFFFFFFF</item>
+        <item name="backgroundTint">@color/accent</item>
+        <item name="android:textColor">@color/text_on_accent</item>
+        <item name="strokeColor">@color/accent</item>
     </style>
 
     <style name="Widget.ZoomHundred.ControlButton" parent="Widget.MaterialComponents.Button">
         <item name="android:textAllCaps">false</item>
-        <item name="android:textColor">@android:color/white</item>
+        <item name="android:textColor">@color/text_primary</item>
         <item name="android:textSize">13sp</item>
         <item name="backgroundTint">@color/control_button_bg</item>
         <item name="android:insetTop">0dp</item>
@@ -56,13 +144,12 @@
     </style>
 
     <style name="Widget.ZoomHundred.ControlButtonActive" parent="Widget.ZoomHundred.ControlButton">
-        <item name="backgroundTint">@color/violet_primary</item>
-        <item name="android:textColor">#FF111418</item>
+        <item name="backgroundTint">@color/accent</item>
+        <item name="android:textColor">@color/text_on_accent</item>
     </style>
 
     <style name="Widget.ZoomHundred.ShutterButton" parent="Widget.MaterialComponents.Button">
         <item name="android:textAllCaps">false</item>
-        <item name="android:textStyle">bold</item>
         <item name="android:textColor">@color/shutter_text</item>
         <item name="backgroundTint">@color/shutter_bg</item>
         <item name="android:insetTop">0dp</item>
@@ -77,11 +164,10 @@
 
     <style name="Widget.ZoomHundred.ProButton" parent="Widget.MaterialComponents.Button.OutlinedButton">
         <item name="android:textAllCaps">false</item>
-        <item name="android:textColor">@color/violet_primary</item>
-        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/accent</item>
         <item name="android:textSize">13sp</item>
-        <item name="backgroundTint">@color/violet_container</item>
-        <item name="strokeColor">@color/violet_primary</item>
+        <item name="backgroundTint">@color/accent_ghost</item>
+        <item name="strokeColor">@color/accent_dim</item>
         <item name="strokeWidth">1dp</item>
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
@@ -90,7 +176,7 @@
         <item name="elevation">0dp</item>
         <item name="android:stateListAnimator">@null</item>
         <item name="cornerRadius">22dp</item>
-        <item name="rippleColor">#55C4B5FD</item>
+        <item name="rippleColor">#55CDBBFF</item>
     </style>
 
     <style name="Widget.ZoomHundred.ToggleChip" parent="Widget.MaterialComponents.Button.OutlinedButton">
@@ -99,12 +185,12 @@
         <item name="android:layout_marginEnd">6dp</item>
         <item name="android:minWidth">0dp</item>
         <item name="android:minHeight">0dp</item>
-        <item name="android:textColor">#CCFFFFFF</item>
+        <item name="android:textColor">@color/text_secondary</item>
         <item name="android:textSize">12sp</item>
         <item name="android:paddingStart">12dp</item>
         <item name="android:paddingEnd">12dp</item>
-        <item name="backgroundTint">#22FFFFFF</item>
-        <item name="strokeColor">#44FFFFFF</item>
+        <item name="backgroundTint">#14FFFFFF</item>
+        <item name="strokeColor">@color/hairline_strong</item>
         <item name="strokeWidth">1dp</item>
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
@@ -113,14 +199,50 @@
     </style>
 
     <style name="Widget.ZoomHundred.ToggleChipActive" parent="Widget.ZoomHundred.ToggleChip">
-        <item name="backgroundTint">@color/violet_primary</item>
-        <item name="android:textColor">#FF111418</item>
-        <item name="strokeColor">@color/violet_primary</item>
+        <item name="backgroundTint">@color/accent</item>
+        <item name="android:textColor">@color/text_on_accent</item>
+        <item name="strokeColor">@color/accent</item>
     </style>
 
     <style name="Widget.ZoomHundred.Switch" parent="Widget.MaterialComponents.CompoundButton.Switch">
-        <item name="colorAccent">@color/violet_primary</item>
-        <item name="thumbTint">#FFFFFFFF</item>
-        <item name="trackTint">#FF555555</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="thumbTint">@color/text_primary</item>
+        <item name="trackTint">@color/surface_3</item>
     </style>
+
+    <!-- Settings list row -->
+    <style name="Widget.ZoomHundred.SettingRow" parent="">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">56dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingStart">@dimen/screen_margin</item>
+        <item name="android:paddingEnd">@dimen/screen_margin</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingBottom">12dp</item>
+        <item name="android:background">?android:attr/selectableItemBackground</item>
+    </style>
+
+    <style name="Text.SectionHeader" parent="">
+        <item name="android:textColor">@color/accent</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:letterSpacing">0.16</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:paddingStart">@dimen/screen_margin</item>
+        <item name="android:paddingEnd">@dimen/screen_margin</item>
+        <item name="android:paddingTop">20dp</item>
+        <item name="android:paddingBottom">8dp</item>
+    </style>
+
+    <style name="Widget.ZoomHundred.Slider" parent="Widget.MaterialComponents.Slider">
+        <item name="thumbColor">@color/accent</item>
+        <item name="trackColorActive">@color/accent</item>
+        <item name="trackColorInactive">@color/slider_inactive</item>
+        <item name="haloColor">@color/slider_halo</item>
+        <item name="labelBehavior">floating</item>
+        <item name="android:valueFrom">0</item>
+        <item name="android:valueTo">100</item>
+    </style>
+
 </resources>

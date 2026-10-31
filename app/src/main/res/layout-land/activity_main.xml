@@ -1,43 +1,83 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Open 100x viewfinder — iOS / ColorOS style.
+
+  Rules of the design:
+   * The preview is the screen. Chrome never covers more than it must.
+   * Icons are plain white glyphs with 40 dp touch targets, not chips in chips.
+   * One accent colour (yellow) marks the active state only.
+   * Everything advanced (loupe, HUD, histogram, level, zebra) is off by default and
+     lives in Pro mode, so the default screen has exactly four rows of information.
+-->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/rootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/camera_surface"
+    android:background="@color/ink"
+    android:keepScreenOn="true"
     tools:context=".MainActivity">
 
+    <!-- Camera feed, full bleed. -->
     <androidx.camera.view.PreviewView
         android:id="@+id/previewView"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:keepScreenOn="true"
         app:implementationMode="compatible"
+        app:scaleType="fillCenter"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/sidePanel"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:scaleType="fillCenter" />
+        app:layout_constraintTop_toTopOf="parent" />
 
-    <com.example.zoomhundred.overlay.GridOverlayView
-        android:id="@+id/gridOverlay"
+    <!-- Photo-sphere aiming grid; only visible during a sweep. -->
+    <com.example.zoomhundred.overlay.SphereOverlayView
+        android:id="@+id/sphereOverlay"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:clickable="false"
-        android:focusable="false"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- ── Live image analysis overlays (all off unless the user turns them on) ── -->
+    <com.example.zoomhundred.overlay.ZebraView
+        android:id="@+id/zebraView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/previewView"
         app:layout_constraintEnd_toEndOf="@id/previewView"
         app:layout_constraintStart_toStartOf="@id/previewView"
         app:layout_constraintTop_toTopOf="@id/previewView" />
 
-    <com.example.zoomhundred.overlay.HeatHazeView
-        android:id="@+id/heatHazeView"
+    <com.example.zoomhundred.overlay.FalseColorView
+        android:id="@+id/falseColorView"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:clickable="false"
-        android:focusable="false"
         android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintTop_toTopOf="@id/previewView" />
+
+    <com.example.zoomhundred.overlay.FocusPeakingView
+        android:id="@+id/peakingView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintTop_toTopOf="@id/previewView" />
+
+    <com.example.zoomhundred.overlay.GridOverlayView
+        android:id="@+id/gridOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         app:layout_constraintBottom_toBottomOf="@id/previewView"
         app:layout_constraintEnd_toEndOf="@id/previewView"
         app:layout_constraintStart_toStartOf="@id/previewView"
@@ -47,8 +87,18 @@
         android:id="@+id/extremeOverlay"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:clickable="false"
-        android:focusable="false"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintTop_toTopOf="@id/previewView" />
+
+    <View
+        android:id="@+id/focusRing"
+        android:layout_width="76dp"
+        android:layout_height="76dp"
+        android:alpha="0"
+        android:background="@drawable/focus_ring"
+        android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/previewView"
         app:layout_constraintEnd_toEndOf="@id/previewView"
         app:layout_constraintStart_toStartOf="@id/previewView"
@@ -58,7 +108,7 @@
         android:id="@+id/freezeScopeView"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:background="#EE000000"
+        android:background="#F2000000"
         android:clickable="true"
         android:contentDescription="@string/freeze_scope"
         android:scaleType="fitCenter"
@@ -72,7 +122,7 @@
         android:id="@+id/nightOverlay"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:background="#99FF0000"
+        android:background="#59000000"
         android:clickable="false"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/previewView"
@@ -80,22 +130,24 @@
         app:layout_constraintStart_toStartOf="@id/previewView"
         app:layout_constraintTop_toTopOf="@id/previewView" />
 
+    <!-- Gesture surface: pinch to zoom, drag to zoom, tap to focus. -->
     <View
         android:id="@+id/gestureLayer"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:clickable="true"
-        android:focusable="true"
+        android:focusable="false"
         app:layout_constraintBottom_toBottomOf="@id/previewView"
         app:layout_constraintEnd_toEndOf="@id/previewView"
         app:layout_constraintStart_toStartOf="@id/previewView"
         app:layout_constraintTop_toTopOf="@id/previewView" />
 
+    <!-- Shake feedback: thin edge glow, no panel. -->
     <View
         android:id="@+id/edgeGlowLeft"
-        android:layout_width="18dp"
+        android:layout_width="14dp"
         android:layout_height="0dp"
-        android:background="#667C3AED"
+        android:background="@color/accent_dim"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/previewView"
         app:layout_constraintStart_toStartOf="@id/previewView"
@@ -103,9 +155,9 @@
 
     <View
         android:id="@+id/edgeGlowRight"
-        android:layout_width="18dp"
+        android:layout_width="14dp"
         android:layout_height="0dp"
-        android:background="#667C3AED"
+        android:background="@color/accent_dim"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/previewView"
         app:layout_constraintEnd_toEndOf="@id/previewView"
@@ -114,8 +166,8 @@
     <View
         android:id="@+id/edgeGlowTop"
         android:layout_width="0dp"
-        android:layout_height="18dp"
-        android:background="#667C3AED"
+        android:layout_height="14dp"
+        android:background="@color/accent_dim"
         android:visibility="gone"
         app:layout_constraintEnd_toEndOf="@id/previewView"
         app:layout_constraintStart_toStartOf="@id/previewView"
@@ -124,430 +176,510 @@
     <View
         android:id="@+id/edgeGlowBottom"
         android:layout_width="0dp"
-        android:layout_height="18dp"
-        android:background="#667C3AED"
+        android:layout_height="14dp"
+        android:background="@color/accent_dim"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/previewView"
         app:layout_constraintEnd_toEndOf="@id/previewView"
         app:layout_constraintStart_toStartOf="@id/previewView" />
 
+    <!-- Pro-only overlays. Hidden by default. -->
+    <com.example.zoomhundred.overlay.LoupeView
+        android:id="@+id/loupeView"
+        android:layout_width="104dp"
+        android:layout_height="104dp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <com.example.zoomhundred.overlay.HudView
+        android:id="@+id/hudView"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="72dp"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintWidth_percent="0.55" />
+
+    <com.example.zoomhundred.overlay.HistogramView
+        android:id="@+id/histogramView"
+        android:layout_width="120dp"
+        android:layout_height="64dp"
+        android:layout_marginEnd="16dp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/hudView" />
+
+    <com.example.zoomhundred.overlay.LevelIndicatorView
+        android:id="@+id/levelView"
+        android:layout_width="220dp"
+        android:layout_height="60dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/zoomPresetRow"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- Legacy shake panel keeps its ids for the settings/pro wiring, never shown by default. -->
+    <LinearLayout
+        android:id="@+id/shakeMeterRow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/zoomPresetRow"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <com.example.zoomhundred.overlay.ShakeMeterView
+            android:id="@+id/shakeMeter"
+            android:layout_width="96dp"
+            android:layout_height="18dp" />
+
+        <TextView
+            android:id="@+id/shakeMeterLabel"
+            style="@style/Text.Micro"
+            android:layout_width="wrap_content"
+            android:layout_height="18dp"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="8dp"
+            android:gravity="center_vertical"
+            android:text="@string/anti_shake_wait"
+            android:textColor="@color/text_secondary" />
+    </LinearLayout>
+
+    <!-- ── Top bar: lens, then the four things anyone touches while shooting ── -->
+    <View
+        android:id="@+id/topScrim"
+        android:layout_width="0dp"
+        android:layout_height="104dp"
+        android:background="@drawable/bg_scrim_top"
+        android:clickable="false"
+        android:focusable="false"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <LinearLayout
+        android:id="@+id/topPanel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        android:gravity="center_vertical"
+        android:minHeight="56dp"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="6dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/lensBadgeText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:alpha="0.85"
+            android:background="@android:color/transparent"
+            android:fontFamily="sans-serif-medium"
+            android:includeFontPadding="false"
+            android:letterSpacing="0.08"
+            android:text="@string/lens_loading"
+            android:textAllCaps="true"
+            android:textColor="@color/text_primary"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/proModeBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="24dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_pill_accent"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:letterSpacing="0.06"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="@string/pro_manual"
+            android:textAllCaps="true"
+            android:textColor="@color/text_on_accent"
+            android:textSize="10sp"
+            android:visibility="gone" />
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <ImageView
+            android:id="@+id/gridButton"
+            style="@style/Widget.ZoomHundred.GhostIcon"
+            android:contentDescription="@string/grid_off"
+            android:src="@drawable/ic_grid" />
+
+        <ImageView
+            android:id="@+id/flashButton"
+            style="@style/Widget.ZoomHundred.GhostIcon"
+            android:contentDescription="@string/flash_off"
+            android:src="@drawable/ic_flash_off" />
+
+        <ImageView
+            android:id="@+id/timerButton"
+            style="@style/Widget.ZoomHundred.GhostIcon"
+            android:contentDescription="@string/timer_off"
+            android:src="@drawable/ic_timer" />
+
+        <TextView
+            android:id="@+id/hdrButton"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/bg_chip_selector"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:letterSpacing="0.08"
+            android:minWidth="46dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="@string/hdr"
+            android:textAllCaps="true"
+            android:textColor="@color/text_primary"
+            android:textSize="11sp" />
+
+        <ImageView
+            android:id="@+id/toolsButton"
+            style="@style/Widget.ZoomHundred.GhostIcon"
+            android:contentDescription="@string/more"
+            android:src="@drawable/ic_more" />
+    </LinearLayout>
+
+    <!-- Pro tool rail: only in Pro mode. -->
+    <LinearLayout
+        android:id="@+id/sidePanel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="8dp"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/zoomPresetRow"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ImageView
+            android:id="@+id/loupeToggleButton"
+            style="@style/Widget.ZoomHundred.GhostIcon"
+            android:contentDescription="@string/loupe"
+            android:src="@drawable/ic_loupe" />
+
+        <ImageView
+            android:id="@+id/monitorButton"
+            style="@style/Widget.ZoomHundred.GhostIcon"
+            android:contentDescription="@string/monitor"
+            android:src="@drawable/ic_histogram" />
+
+        <ImageView
+            android:id="@+id/settingsButton"
+            style="@style/Widget.ZoomHundred.GhostIcon"
+            android:contentDescription="@string/settings"
+            android:src="@drawable/ic_settings" />
+    </LinearLayout>
+
+    <!-- ── Status, zoom, shutter ── -->
+    <TextView
+        android:id="@+id/captureStatusText"
+        android:layout_width="wrap_content"
+        android:layout_height="28dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_pill"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:maxWidth="300dp"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:textColor="@color/text_primary"
+        android:textSize="12sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/zoomPresetRow"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- iOS-style zoom capsule. Chips are built in code from the lens' real stops. -->
+    <LinearLayout
+        android:id="@+id/zoomPresetRow"
+        android:layout_width="wrap_content"
+        android:layout_height="34dp"
+        android:visibility="gone"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/bg_zoom_capsule"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
+        app:layout_constraintBottom_toTopOf="@id/bottomControlsBar"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <TextView
+        android:id="@+id/zoomValueText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_primary"
+        android:textSize="1sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/zoomPresetRow"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <TextView
+        android:id="@+id/recordTimerText"
+        android:layout_width="wrap_content"
+        android:layout_height="24dp"
+        android:layout_marginTop="4dp"
+        android:background="@drawable/bg_pill"
+        android:fontFamily="monospace"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:letterSpacing="0.06"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:textColor="@color/record_red"
+        android:textSize="12sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topPanel" />
+
+    <!-- Shutter row: thumbnail — shutter — flip, exactly like a stock camera. -->
+    <LinearLayout
+        android:id="@+id/bottomControlsBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="28dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="28dp"
+        android:paddingBottom="6dp"
+        app:layout_constraintBottom_toTopOf="@id/modeStripScroll"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center_vertical|start">
+
+            <ImageView
+                android:id="@+id/thumbnailView"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_thumbnail"
+                android:clickable="true"
+                android:contentDescription="@string/gallery"
+                android:focusable="true"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_gallery" />
+
+            <ImageView
+                android:id="@+id/pauseButton"
+                style="@style/Widget.ZoomHundred.GhostIcon"
+                android:layout_gravity="center_vertical|start"
+                android:layout_marginStart="56dp"
+                android:contentDescription="@string/pause"
+                android:src="@drawable/ic_pause"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <com.example.zoomhundred.overlay.CaptureButtonView
+            android:id="@+id/captureButton"
+            android:layout_width="84dp"
+            android:layout_height="66dp"
+            android:contentDescription="@string/shutter" />
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1">
+
+            <ImageView
+                android:id="@+id/switchCameraButton"
+                style="@style/Widget.ZoomHundred.GhostIcon"
+                android:layout_gravity="center_vertical|end"
+                android:contentDescription="@string/switch_camera"
+                android:src="@drawable/ic_switch_camera" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- Mode strip: plain text, yellow active state, scrolls and centres the selection. -->
+    <HorizontalScrollView
+        android:id="@+id/modeStripScroll"
+        android:layout_width="0dp"
+        android:layout_height="36dp"
+        android:fillViewport="true"
+        android:overScrollMode="never"
+        android:scrollbars="none"
+        app:layout_constraintBottom_toTopOf="@id/storageText"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <LinearLayout
+            android:id="@+id/modeStripContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="46dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp" />
+    </HorizontalScrollView>
+
+    <TextView
+        android:id="@+id/storageText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="4dp"
+        android:alpha="0.55"
+        android:fontFamily="monospace"
+        android:includeFontPadding="false"
+        android:textColor="@color/text_secondary"
+        android:textSize="10sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- ── Zoom drawer: lens switch, fine slider, rail, pro entry ── -->
+    <LinearLayout
+        android:id="@+id/bottomPanel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_marginEnd="10dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_panel"
+        android:orientation="vertical"
+        android:padding="14dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/zoomPresetRow"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/switchLensButton"
+                    style="@style/Widget.ZoomHundred.ControlButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:text="@string/switch_lens" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/lockZoomButton"
+                    style="@style/Widget.ZoomHundred.ControlButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/lock_zoom" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/resetZoomButton"
+                    style="@style/Widget.ZoomHundred.ControlButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/reset_zoom" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/flashlightButton"
+                    style="@style/Widget.ZoomHundred.ControlButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/flashlight" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/proSettingsButton"
+                    style="@style/Widget.ZoomHundred.ControlButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/pro_controls" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <com.google.android.material.slider.Slider
+            android:id="@+id/zoomSlider"
+            style="@style/Widget.ZoomHundred.Slider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:value="0" />
+
+        <com.example.zoomhundred.overlay.ZoomRailView
+            android:id="@+id/zoomRail"
+            android:layout_width="match_parent"
+            android:layout_height="44dp" />
+
+        <LinearLayout
+            android:id="@+id/zoomLockButton"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackground"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:contentDescription="@string/lock_zoom"
+                android:src="@drawable/ic_lock"
+                app:tint="@color/text_primary" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="10dp"
+                android:background="@android:color/transparent"
+                android:text="@string/lock_zoom"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+
     <LinearLayout
         android:id="@+id/gestureHintOverlay"
-        android:layout_width="360dp"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_margin="18dp"
-        android:background="@drawable/panel_scrim"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:background="@drawable/bg_panel"
+        android:gravity="center"
         android:orientation="vertical"
         android:padding="16dp"
         android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@id/previewView"
-        app:layout_constraintStart_toStartOf="@id/previewView"
-        app:layout_constraintTop_toTopOf="@id/previewView">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/gesture_hints"
-            android:textColor="@android:color/white"
-            android:textSize="13sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="@string/gesture_hint_body"
-            android:textColor="@color/detail_text"
-            android:textSize="12sp" />
-    </LinearLayout>
-
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:id="@+id/sidePanel"
-        android:layout_width="384dp"
-        android:layout_height="0dp"
-        android:background="@color/bar_black"
-        android:elevation="18dp"
-        android:padding="12dp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/zoomPresetRow"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
-
-        <LinearLayout
-            android:id="@+id/topPanel"
-            android:layout_width="0dp"
-            android:layout_height="44dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent">
-
-            <TextView
-                android:id="@+id/lensBadgeText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/pill_background"
-                android:paddingStart="10dp"
-                android:paddingTop="5dp"
-                android:paddingEnd="10dp"
-                android:paddingBottom="5dp"
-                android:text="@string/lens_loading"
-                android:textAllCaps="true"
-                android:textColor="@android:color/white"
-                android:textSize="11sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/captureStatusText"
-                android:layout_width="82dp"
-                android:layout_height="30dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/pill_background"
-                android:gravity="center"
-                android:text="Stable"
-                android:textColor="@color/violet_primary"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/proModeBadge"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/pill_background"
-                android:paddingStart="10dp"
-                android:paddingTop="5dp"
-                android:paddingEnd="10dp"
-                android:paddingBottom="5dp"
-                android:text="PRO"
-                android:textColor="@color/violet_primary"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <TextView
-                android:id="@+id/gestureHintButton"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:background="@drawable/pill_background"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:text="?"
-                android:textColor="@android:color/white"
-                android:textSize="17sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+        app:layout_constraintStart_toStartOf="parent">
 
         <TextView
-            android:id="@+id/zoomValueText"
-            android:layout_width="150dp"
-            android:layout_height="52dp"
-            android:layout_marginTop="10dp"
-            android:background="@drawable/pill_background"
-            android:clickable="true"
-            android:focusable="true"
+            style="@style/Text.Label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:gravity="center"
-            android:text="@string/default_zoom_ratio"
-            android:textColor="@android:color/white"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/topPanel" />
-
-        <com.example.zoomhundred.overlay.HistogramView
-            android:id="@+id/histogramView"
-            android:layout_width="142dp"
-            android:layout_height="46dp"
-            android:layout_marginTop="10dp"
-            android:visibility="gone"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/topPanel" />
-
-        <LinearLayout
-            android:id="@+id/hudRow"
-            android:layout_width="142dp"
-            android:layout_height="78dp"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/pill_background"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingStart="10dp"
-            android:paddingTop="7dp"
-            android:paddingEnd="10dp"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/histogramView">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="ISO"
-                    android:textColor="@android:color/white"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/hudIso"
-                    android:layout_width="36dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:text="Yes"
-                    android:textColor="@color/violet_primary"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="SS"
-                    android:textColor="@android:color/white"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/hudShutter"
-                    android:layout_width="36dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:text="Yes"
-                    android:textColor="@color/violet_primary"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Auto"
-                    android:textColor="@android:color/white"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/hudWb"
-                    android:layout_width="36dp"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:text="Yes"
-                    android:textColor="@color/violet_primary"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </LinearLayout>
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/captureButton"
-            style="@style/Widget.ZoomHundred.ShutterButton"
-            android:layout_width="92dp"
-            android:layout_height="92dp"
-            android:contentDescription="@string/capture"
-            android:text=""
-            app:cornerRadius="46dp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="@id/zoomValueText"
-            app:layout_constraintStart_toStartOf="@id/zoomValueText"
-            app:layout_constraintTop_toTopOf="parent"
-            app:strokeColor="@color/violet_primary"
-            app:strokeWidth="3dp" />
-
-        <ScrollView
-            android:id="@+id/bottomPanel"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_marginTop="12dp"
-            android:fillViewport="false"
-            android:scrollbars="none"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/captureButton">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical">
-
-                <com.google.android.material.slider.Slider
-                    android:id="@+id/zoomSlider"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:stepSize="0.5"
-                    android:value="1"
-                    android:valueFrom="1"
-                    android:valueTo="100"
-                    app:haloColor="@color/slider_halo"
-                    app:labelBehavior="gone"
-                    app:thumbColor="@color/violet_primary"
-                    app:trackColorActive="@color/violet_primary"
-                    app:trackColorInactive="@color/slider_inactive" />
-
-                <HorizontalScrollView
-                    android:layout_width="match_parent"
-                    android:layout_height="42dp"
-                    android:layout_marginTop="2dp"
-                    android:scrollbars="none">
-
-                    <LinearLayout
-                        android:id="@+id/zoomPresetBar"
-                        android:layout_width="wrap_content"
-                        android:layout_height="match_parent"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal" />
-                </HorizontalScrollView>
-
-                <HorizontalScrollView
-                    android:layout_width="match_parent"
-                    android:layout_height="42dp"
-                    android:layout_marginTop="6dp"
-                    android:scrollbars="none">
-
-                    <LinearLayout
-                        android:id="@+id/secondaryControlBar"
-                        android:layout_width="wrap_content"
-                        android:layout_height="match_parent"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal" />
-                </HorizontalScrollView>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/switchLensButton"
-                        style="@style/Widget.ZoomHundred.ControlButton"
-                        android:layout_width="0dp"
-                        android:layout_height="44dp"
-                        android:layout_weight="1"
-                        android:text="@string/switch_lens" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/resetZoomButton"
-                        style="@style/Widget.ZoomHundred.ControlButton"
-                        android:layout_width="0dp"
-                        android:layout_height="44dp"
-                        android:layout_marginStart="8dp"
-                        android:layout_weight="1"
-                        android:text="@string/info" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/lockZoomButton"
-                        style="@style/Widget.ZoomHundred.ControlButton"
-                        android:layout_width="0dp"
-                        android:layout_height="40dp"
-                        android:layout_weight="1"
-                        android:text="@string/lock_zoom" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/flashlightButton"
-                        style="@style/Widget.ZoomHundred.ControlButton"
-                        android:layout_width="0dp"
-                        android:layout_height="40dp"
-                        android:layout_marginStart="6dp"
-                        android:layout_weight="1"
-                        android:text="@string/flash_off" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/proSettingsButton"
-                        style="@style/Widget.ZoomHundred.ProButton"
-                        android:layout_width="0dp"
-                        android:layout_height="40dp"
-                        android:layout_marginStart="6dp"
-                        android:layout_weight="1"
-                        android:text="@string/pro_settings" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/gridButton"
-                        style="@style/Widget.ZoomHundred.ControlButton"
-                        android:layout_width="0dp"
-                        android:layout_height="40dp"
-                        android:layout_marginStart="6dp"
-                        android:layout_weight="1"
-                        android:text="@string/grid_off" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/zoomDetailText"
-                    android:layout_width="wrap_content"
-                    android:layout_height="24dp"
-                    android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="6dp"
-                    android:background="@drawable/pill_background"
-                    android:gravity="center"
-                    android:paddingStart="10dp"
-                    android:paddingEnd="10dp"
-                    android:text="@string/loading_camera"
-                    android:textColor="@color/detail_text"
-                    android:textSize="11sp"
-                    android:visibility="gone" />
-
-                <LinearLayout
-                    android:id="@+id/shakeMeterRow"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:visibility="gone">
-
-                    <com.example.zoomhundred.overlay.ShakeMeterView
-                        android:id="@+id/shakeMeter"
-                        android:layout_width="0dp"
-                        android:layout_height="8dp"
-                        android:layout_weight="1" />
-
-                    <TextView
-                        android:id="@+id/shakeMeterLabel"
-                        android:layout_width="52dp"
-                        android:layout_height="wrap_content"
-                        android:gravity="end"
-                        android:text="WAIT"
-                        android:textColor="#CCFFFFFF"
-                        android:textSize="11sp" />
-                </LinearLayout>
-            </LinearLayout>
-        </ScrollView>
-    </androidx.constraintlayout.widget.ConstraintLayout>
+            android:text="@string/gesture_hint"
+            android:textColor="@color/text_primary" />
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
