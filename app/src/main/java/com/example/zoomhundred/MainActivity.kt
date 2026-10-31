@@ -559,7 +559,14 @@ class MainActivity : AppCompatActivity(),
             } else {
                 binding.captureButton.mode = if (mode == CaptureMode.VIDEO) CaptureButtonView.Mode.VIDEO else CaptureButtonView.Mode.PHOTO
                 binding.captureButton.progress = 0f
-                if (message.isBlank()) binding.captureStatusText.visibility = View.GONE
+                if (message.isBlank()) {
+                    binding.captureStatusText.visibility = View.GONE
+                } else {
+                    binding.captureStatusText.text = message
+                    mainHandler.postDelayed({
+                        if (!coordinator.isBusy) binding.captureStatusText.visibility = View.GONE
+                    }, 1400L)
+                }
             }
             if (message.isNotBlank() && active) updateStatusHints()
         }
@@ -704,13 +711,21 @@ class MainActivity : AppCompatActivity(),
         }
         if (rawBound) {
             bindCamera(forceRaw = false)
-            mainHandler.postDelayed({ coordinator.singleShot(buildShotContext()) }, 350L)
+            mainHandler.postDelayed({ coordinator.shoot(buildShotContext()) }, 350L)
             return
         }
-        coordinator.singleShot(
-            ctx = buildShotContext(),
-            portrait = mode == CaptureMode.PORTRAIT
-        )
+        if (mode == CaptureMode.ASTRO) {
+            // Astro needs a long manual exposure; the coordinator hands us a snapshot with
+            // manual mode + a cool white balance, which we push into the live session.
+            pro = coordinator.applyAstroExposure(
+                pro,
+                settings.astroExposureSeconds,
+                pro.isoValue()
+            )
+            engine.applySessionOptions(pro, lens, displayRotation(), videoConfig())
+            updateHud()
+        }
+        coordinator.shoot(buildShotContext())
     }
 
     private fun buildShotContext(): ShotContext {

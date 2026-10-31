@@ -630,6 +630,7 @@ class CaptureCoordinator(
             enhanceStrength = app.zoomEnhanceStrength,
             stripGps = app.stripGps || p.stripGpsExif,
             keepOriginal = app.keepOriginals,
+            document = ctx.mode == CaptureMode.DOCUMENT,
             digitalCrop = (ctx.zoomRatio / ctx.nativeZoom.coerceAtLeast(1f)).coerceAtLeast(1f),
             cropOffsetX = ctx.cropOffsetX,
             cropOffsetY = ctx.cropOffsetY,

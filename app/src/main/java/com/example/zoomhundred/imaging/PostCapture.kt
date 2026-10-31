@@ -2,6 +2,10 @@ package com.example.zoomhundred.imaging
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
 import androidx.exifinterface.media.ExifInterface
@@ -43,6 +47,7 @@ object PostCapture {
         val enhanceStrength: Int = 55,
         val stripGps: Boolean = false,
         val keepOriginal: Boolean = true,
+        val document: Boolean = false,
         val digitalCrop: Float = 1f,
         val cropOffsetX: Float = 0f,
         val cropOffsetY: Float = 0f,
@@ -111,6 +116,9 @@ object PostCapture {
         if (params.mirror) {
             current = replace(current, BitmapOps.mirror(current))
         }
+        if (params.document) {
+            current = replace(current, documentStretch(current))
+        }
         if (params.profile != ColorProfile.NEUTRAL || params.lut != null) {
             current = replace(current, ColorPipeline.applyProfile(current, params.profile, params.lut, params.lutIntensity))
         }
@@ -121,6 +129,60 @@ object PostCapture {
             current = replace(current, ExtremeZoomPostProcessor.enhanceBitmap(current, params.enhanceStrength))
         }
         return current
+    }
+
+    /**
+     * Document capture: a measured black/white point stretch so paper reads as paper.
+     *
+     * Percentiles are sampled from a coarse grid and applied with a colour matrix, which
+     * keeps the operation O(1) per pixel on the GPU path instead of a 12 MP Kotlin loop.
+     * There is no perspective correction — the mode label says so.
+     */
+    private fun documentStretch(src: Bitmap): Bitmap {
+        val stepX = (src.width / 96).coerceAtLeast(1)
+        val stepY = (src.height / 96).coerceAtLeast(1)
+        val histogram = IntArray(256)
+        var samples = 0
+        var y = 0
+        while (y < src.height) {
+            var x = 0
+            while (x < src.width) {
+                val pixel = src.getPixel(x, y)
+                val luma = ((0.299f * ((pixel shr 16) and 0xFF)) +
+                    (0.587f * ((pixel shr 8) and 0xFF)) +
+                    (0.114f * (pixel and 0xFF))).toInt().coerceIn(0, 255)
+                histogram[luma]++
+                samples++
+                x += stepX
+            }
+            y += stepY
+        }
+        if (samples == 0) return src.copy(Bitmap.Config.ARGB_8888, true)
+
+        fun percentile(fraction: Float): Int {
+            val target = (samples * fraction).toInt()
+            var running = 0
+            for (index in 0..255) {
+                running += histogram[index]
+                if (running >= target) return index
+            }
+            return 255
+        }
+
+        val black = percentile(0.02f).toFloat()
+        val white = percentile(0.98f).toFloat().coerceAtLeast(black + 8f)
+        val scale = 255f / (white - black)
+        val translate = -black * scale
+        val matrix = ColorMatrix().apply {
+            setScale(scale, scale, scale, 1f)
+            postTranslate(translate, translate, translate)
+        }
+        val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        Canvas(out).drawBitmap(
+            src, 0f, 0f,
+            Paint(Paint.FILTER_BITMAP_FLAG).apply { colorFilter = ColorMatrixColorFilter(matrix) }
+        )
+        return out
     }
 
     /**

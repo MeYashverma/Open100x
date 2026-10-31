@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -43,16 +43,24 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee -a build.log
 
       - name: Assemble debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee -a build.log
 
       - name: Compile instrumentation tests
-        run: ./gradlew assembleDebugAndroidTest --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebugAndroidTest --stacktrace 2>&1 | tee -a build.log
 
       - name: Assemble release APK (minified)
-        run: ./gradlew assembleRelease --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew assembleRelease --stacktrace 2>&1 | tee -a build.log
 
       - name: Collect APKs
         if: always()
@@ -76,3 +84,16 @@ jobs:
           name: open100x-unit-test-report
           path: app/build/reports/tests/testDebugUnitTest
           if-no-files-found: ignore
+
+      - name: Publish build log on failure
+        if: failure()
+        run: |
+          tail -n 4000 build.log > build-tail.log || echo "no build log" > build-tail.log
+          mkdir -p /tmp/ci && cd /tmp/ci
+          cp "$GITHUB_WORKSPACE/build-tail.log" build.log
+          git init -q -b ci-logs
+          git add build.log
+          git -c user.email=ci@users.noreply.github.com -c user.name="CI" commit -q -m "ci build log"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-logs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
