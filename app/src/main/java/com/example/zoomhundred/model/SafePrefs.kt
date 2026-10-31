@@ -32,7 +32,7 @@ fun SharedPreferences.safeString(key: String, def: String?): String? =
 
 /** Wipes the file when it is unreadable, instead of failing every read forever. */
 fun SharedPreferences.wipeIfCorrupt(): SharedPreferences = try {
-    keys
+    getAll()
     this
 } catch (_: Throwable) {
     try {
