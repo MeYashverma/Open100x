@@ -88,7 +88,7 @@ when the stream map *and* a hardware encoder report 3840×2160 at ≥58 fps.
 | Histogram | Supported | Live luma, 256 bins, clipping flag |
 | Zebra | Supported | ≥95 % IRE stripes |
 | Focus peaking | Supported | Sobel-style edge mask |
-| False colour | Unavailable | Not implemented in this build |
+| False colour | Supported | IRE-banded false-colour overlay (monitor button cycles off → histogram → peaking → zebra → false colour) |
 | Spirit level | Supported | Accelerometer roll/pitch |
 | Composition grids | Supported | Thirds, golden, spiral, cross, diagonal, square + aspect mask |
 | Technical HUD | Supported | Focal length (mm and 35 mm-eq), ISO, shutter, EV, WB, focus, fps, stabilisation |

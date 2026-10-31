@@ -50,7 +50,7 @@ the digital crop into the saved file.
 * New viewfinder: deep-black canvas, lilac accent, 44–48 dp controls, no glassmorphism, no
   emoji icons.
 * Overlays: draggable focus loupe, log-scale zoom rail with hardware-aware presets,
-  technical HUD, five-state capture button, level indicator, focus peaking, zebra stripes,
+  technical HUD, five-state capture button, level indicator, focus peaking, zebra stripes, IRE false-colour,
   seven composition guides with aspect mask, extreme-zoom FOV readout and target lock,
   stability edge glow.
 * `ui/ToolsSheet` — secondary modes, multi-frame tools, look controls, monitoring, video

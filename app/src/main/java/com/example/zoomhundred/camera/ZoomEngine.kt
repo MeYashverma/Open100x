@@ -54,32 +54,40 @@ class ZoomEngine(
     }
 
     /**
-     * Presets that make sense for this hardware: nothing wider than the lens can show,
-     * nothing longer than the engine can reach, and no duplicate labels.
+     * Presets that make sense for *this lens*: never wider than the sensor can show and
+     * never longer than the engine can reach.
+     *
+     * An ultra-wide module is a separate physical camera here (the lens button switches to
+     * it), so a wide lens must not advertise 0.5× — that would be a dead control. When the
+     * current lens really is the ultra-wide, `minNative` is already 0.5 and the wide stop
+     * appears naturally.
      */
     fun presets(
         available: List<Float>,
-        hasUltraWide: Boolean,
-        ultraWideMinZoom: Float = 1f,
+        @Suppress("UNUSED_PARAMETER") hasUltraWide: Boolean,
+        @Suppress("UNUSED_PARAMETER") ultraWideMinZoom: Float = 1f,
         telephotoMinZoom: Float? = null
     ): List<ZoomPreset> {
+        val floor = minNative.coerceAtLeast(0.5f)
         val cleaned = available
             .filter { it > 0f }
-            .filter { it >= ultraWideMinZoom - 0.001f || !hasUltraWide }
             .map { it.coerceAtMost(maxZoom) }
-            .filter { it >= minNative - 0.001f || !hasUltraWide }
+            .filter { it >= floor - 0.001f }
             .distinctBy { (it * 10).roundToInt() }
             .sorted()
 
         val list = cleaned.map { ZoomPreset(formatLabel(it), it) }.toMutableList()
-        // Always offer 1x and the long end of the range.
-        if (list.none { abs(it.ratio - 1f) < 0.01f }) list.add(0, ZoomPreset("1×", 1f))
+        if (list.none { abs(it.ratio - 1f) < 0.01f && floor <= 1f }) list.add(0, ZoomPreset("1×", 1f))
         if (list.none { abs(it.ratio - maxZoom) < 0.01f }) list.add(ZoomPreset(formatLabel(maxZoom), maxZoom))
-        if (telephotoMinZoom != null && list.none { abs(it.ratio - telephotoMinZoom) < 0.05f && telephotoMinZoom > 1.2f }) {
+        if (telephotoMinZoom != null && telephotoMinZoom > 1.2f &&
+            list.none { abs(it.ratio - telephotoMinZoom) < 0.05f }
+        ) {
             val insertAt = list.indexOfFirst { it.ratio > telephotoMinZoom }.let { if (it < 0) list.size else it }
             list.add(insertAt, ZoomPreset(formatLabel(telephotoMinZoom), telephotoMinZoom))
         }
-        return list.distinctBy { it.label }.sortedBy { it.ratio }
+        return list.filter { it.ratio >= floor - 0.001f }
+            .distinctBy { it.label }
+            .sortedBy { it.ratio }
     }
 
     /**

@@ -524,6 +524,7 @@ class MainActivity : AppCompatActivity(),
             lastMonitorMs = now
             if (monitorMode == 2) binding.peakingView.submitFrame(frame)
             if (monitorMode == 3) binding.zebraView.submitFrame(frame)
+            if (monitorMode == 4) binding.falseColorView.submitFrame(frame)
             if (binding.freezeScopeView.visibility == View.VISIBLE && now - lastScopeMs >= SCOPE_INTERVAL_MS) {
                 lastScopeMs = now
                 updateFreezeScope(frame)
@@ -1144,14 +1145,16 @@ class MainActivity : AppCompatActivity(),
         binding.histogramView.visibleIf(monitorMode == 1)
         binding.peakingView.visibleIf(monitorMode == 2)
         binding.zebraView.visibleIf(monitorMode == 3)
+        binding.falseColorView.visibleIf(monitorMode == 4)
         binding.monitorButton.alpha = if (monitorMode == 0) 0.6f else 1f
     }
 
     private fun cycleMonitoring() {
-        monitorMode = (monitorMode + 1) % 4
+        monitorMode = (monitorMode + 1) % 5
         updateMonitorVisibility()
         if (monitorMode == 2) binding.peakingView.clear()
         if (monitorMode == 3) binding.zebraView.clear()
+        if (monitorMode == 4) binding.falseColorView.clear()
     }
 
     private fun cycleGrid() {

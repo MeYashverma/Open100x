@@ -70,7 +70,7 @@ com.example.zoomhundred
 │   ├── ZoomRailView.kt          log-scale presets + scrub track
 │   ├── HudView.kt               technical readout (focal length, ISO, shutter, WB, stab…)
 │   ├── CaptureButtonView.kt     photo/video/recording/paused/busy states, progress ring
-│   ├── MonitorViews.kt          LevelIndicatorView, FocusPeakingView, ZebraView
+│   ├── MonitorViews.kt          LevelIndicatorView, FocusPeakingView, ZebraView, FalseColorView
 │   ├── GridOverlayView.kt       composition guides + aspect mask + centre cross
 │   ├── ExtremeZoomOverlayView.kt FOV readout, crop box, drift, target lock
 │   ├── HistogramView.kt         live luma histogram + clipping flag
@@ -161,7 +161,7 @@ throttles consumers independently:
 |---|---|---|
 | Histogram | 120 ms | luma distribution + clipping flag |
 | Loupe | 110 ms | draggable magnified crop |
-| Peaking / Zebra | 140 ms | edge mask / highlight stripes |
+| Peaking / Zebra / False colour | 140 ms | edge mask / highlight stripes / IRE bands |
 | Freeze scope | 260 ms | frozen focus aid |
 
 All consumers run on the analysis thread and only `postInvalidateOnAnimation()` to the UI

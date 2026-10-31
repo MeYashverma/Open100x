@@ -228,3 +228,84 @@ class ZebraView @JvmOverloads constructor(
         super.onDetachedFromWindow()
     }
 }
+
+/**
+ * IRE false-colour exposure map.
+ *
+ * Luma is bucketed into the usual broadcast bands so you can expose by eye:
+ * crushed blacks, legal shadow, mid-grey (green), skin range (yellow/orange),
+ * near-clip (red) and clipped (white). This is a *display* overlay only; it is never
+ * burned into a photograph.
+ */
+class FalseColorView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null
+) : View(context, attrs) {
+
+    private val lock = Any()
+    private var mask: Bitmap? = null
+    private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    var monitorEnabled: Boolean = true
+        set(value) {
+            field = value
+            visibility = if (value) VISIBLE else GONE
+            invalidate()
+        }
+
+    fun submitFrame(frame: LumaFrame) {
+        val stepX = max(1, frame.width / 200)
+        val stepY = max(1, frame.height / 140)
+        val w = max(1, frame.width / stepX)
+        val h = max(1, frame.height / stepY)
+        if (w < 2 || h < 2) return
+        val pixels = IntArray(w * h)
+        try {
+            for (y in 0 until h) {
+                val row = (y * stepY) * frame.rowStride
+                for (x in 0 until w) {
+                    val luma = frame.buffer.get(row + (x * stepX) * frame.pixelStride).toInt() and 0xFF
+                    pixels[y * w + x] = band(luma)
+                }
+            }
+        } catch (_: Exception) {
+            return
+        }
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        bitmap.setPixels(pixels, 0, w, 0, 0, w, h)
+        synchronized(lock) {
+            mask?.recycle()
+            mask = bitmap
+        }
+        postInvalidateOnAnimation()
+    }
+
+    private fun band(luma: Int): Int = when {
+        luma < 6 -> 0xFF3B0764.toInt()      // crushed black
+        luma < 24 -> 0xFF1E3A8A.toInt()     // deep shadow
+        luma < 58 -> 0xFF0E7490.toInt()     // shadow detail
+        luma < 112 -> 0xFF15803D.toInt()    // mid grey
+        luma < 168 -> 0xFFCA8A04.toInt()    // skin / highlight range
+        luma < 214 -> 0xFFEA580C.toInt()    // hot
+        luma < 244 -> 0xFFDC2626.toInt()    // near clip
+        else -> 0xFFFFFFFF.toInt()          // clipped
+    }
+
+    fun clear() {
+        synchronized(lock) {
+            mask?.recycle()
+            mask = null
+        }
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val bitmap = synchronized(lock) { mask } ?: return
+        canvas.drawBitmap(bitmap, null, android.graphics.Rect(0, 0, width, height), paint)
+    }
+
+    override fun onDetachedFromWindow() {
+        clear()
+        super.onDetachedFromWindow()
+    }
+}

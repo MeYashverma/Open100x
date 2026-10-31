@@ -64,9 +64,18 @@ class ZoomEngineTest {
     }
 
     @Test
-    fun presetsIncludeUltraWideWhenTheHardwareHasIt() {
+    fun anUltraWideLensOffersItsWideStop() {
+        val ultraWideLens = ZoomEngine(minNative = 0.5f, maxNative = 4f, maxTotal = 100f)
+        val presets = ultraWideLens.presets(ZoomEngine.DEFAULT_STOPS, hasUltraWide = true, ultraWideMinZoom = 0.5f)
+        assertEquals(0.5f, presets.first().ratio, 0.001f)
+    }
+
+    @Test
+    fun aWideLensNeverAdvertisesAStopItCannotReach() {
+        // The phone may have an ultra-wide module, but this lens is the 1x wide one:
+        // offering 0.5x here would be a dead control.
         val presets = engine.presets(ZoomEngine.DEFAULT_STOPS, hasUltraWide = true, ultraWideMinZoom = 0.5f)
-        assertTrue(presets.any { it.ratio < 0.75f })
+        assertTrue(presets.all { it.ratio >= 0.999f })
     }
 
     @Test
