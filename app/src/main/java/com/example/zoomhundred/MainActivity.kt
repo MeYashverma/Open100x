@@ -1107,6 +1107,10 @@ class MainActivity : AppCompatActivity(),
             }
         )
         binding.hdrButton.alpha = 1f
+        if (!recordingActive && !coordinator.isBusy) {
+            binding.captureButton.mode = if (mode.isVideoMode)
+                CaptureButtonView.Mode.VIDEO else CaptureButtonView.Mode.PHOTO
+        }
         updateMonitorVisibility()
         applyLoupeSize()
         updateHud()
