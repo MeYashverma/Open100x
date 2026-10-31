@@ -1896,10 +1896,18 @@ class MainActivity : AppCompatActivity(),
                     copyToClipboard(previous)
                     toast("Report copied")
                 }
-                .setNeutralButton(getString(R.string.crash_report_clear)) { _, _ ->
+                .setNeutralButton(getString(R.string.crash_report_reset)) { _, _ ->
+                    // Recovery path: a stale preference file is the most common cause of a
+                    // launch crash after an update, and the user cannot clear it themselves.
+                    runCatching {
+                        if (::settings.isInitialized) settings.reset(this)
+                        ProSettings.reset(this)
+                    }.onFailure { android.util.Log.w(TAG, "settings reset failed", it) }
                     CrashGuard.clear(this)
+                    toast("Settings reset")
+                    recreate()
                 }
-                .setNegativeButton(android.R.string.cancel, null)
+                .setNegativeButton(getString(R.string.crash_report_dismiss), null)
                 .show()
         }.onFailure { android.util.Log.w(TAG, "crash dialog unavailable", it) }
     }
